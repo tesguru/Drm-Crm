@@ -7,7 +7,7 @@ use App\Models\Campaign;
 use App\Models\CampaignEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-
+use App\Services\ObanService;
 class FollowUpController extends Controller
 {
     // ============================================================
@@ -83,8 +83,13 @@ class FollowUpController extends Controller
        // Follow-ups — 3 to 6 minutes
 $delayMinutes = ($dispatched + 1) * rand(1, 3);
 
-dispatch(new SendFollowUpEmailJob($email->id))
-    ->delay(now()->addMinutes($delayMinutes));
+// dispatch(new SendFollowUpEmailJob($email->id))
+//     ->delay(now()->addMinutes($delayMinutes));
+
+    ObanService::insertFollowUpJob(
+    $email->id,
+    ($dispatched + 1) * rand(1, 4)
+);
 
             $dispatched++;
         }
@@ -158,8 +163,7 @@ dispatch(new SendFollowUpEmailJob($email->id))
         return "{$mins} minutes estimated";
     }
 
-
-    public function progress($campaignId)
+public function progress($campaignId)
 {
     $campaign = Campaign::where('user_id', Auth::id())
                         ->findOrFail($campaignId);
@@ -168,34 +172,47 @@ dispatch(new SendFollowUpEmailJob($email->id))
                            ->where('status', 'sent')
                            ->get();
 
-    $inQueue = \DB::table('jobs')
-                  ->where('payload', 'like',
-                      '%SendFollowUpEmailJob%')
-                  ->count();
+    $inQueue = \DB::table('oban_jobs')
+        ->whereIn('state', [
+            'available',
+            'scheduled',
+            'executing'
+        ])
+        ->whereRaw(
+            "args->>'campaign_email_id' IN (
+                SELECT id::text FROM campaign_emails
+                WHERE campaign_id = ?
+            )",
+            [$campaign->id]
+        )
+        ->count();
 
-    $followUpEmails = $emails->map(function($email) {
+    $followUps = $emails->map(function ($email) {
         return [
-            'id'              => $email->id,
-            'to_email'        => $email->to_email,
-            'company_name'    => $email->company_name,
-            'from_email'      => $email->from_email,
-            'follow_up_count' => $email->follow_up_count,
-            'has_reply'       => $email->has_reply,
-            'last_follow_up'  => $email->last_follow_up_at
-                ? $email->last_follow_up_at->diffForHumans()
+            'id'             => $email->id,
+            'to_email'       => $email->to_email,
+            'from_email'     => $email->from_email,
+            'follow_up_count'=> $email->follow_up_count,
+            'has_reply'      => $email->has_reply,
+            'last_follow_up' => $email->last_follow_up_at
+                ? $email->last_follow_up_at
+                    ->diffForHumans()
                 : null,
-            'next_type'       => $email->nextFollowUpType(),
-            'eligible'        => $email->canReceiveFollowUp(),
+            'next_type'      => $email->nextFollowUpType(),
+            'eligible'       => $email->canReceiveFollowUp(),
         ];
     });
 
     return response()->json([
-        'success'       => true,
-        'total'         => $emails->count(),
-        'eligible'      => $emails->filter->canReceiveFollowUp()->count(),
-        'replied'       => $emails->where('has_reply', true)->count(),
-        'in_queue'      => $inQueue,
-        'follow_ups'    => $followUpEmails,
+        'success'     => true,
+        'total'       => $emails->count(),
+        'eligible'    => $emails->filter(
+            fn($e) => $e->canReceiveFollowUp()
+        )->count(),
+        'replied'     => $emails->where('has_reply', true)->count(),
+        'in_queue'    => $inQueue,
+        'follow_ups'  => $followUps,
     ]);
 }
+
 }

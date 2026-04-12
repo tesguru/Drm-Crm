@@ -11,7 +11,7 @@ use App\Services\GmailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-
+use App\Services\ObanService;
 class CampaignController extends Controller
 {
     // Get all campaigns
@@ -236,16 +236,21 @@ class CampaignController extends Controller
                     'status'           => 'pending',
                 ]);
 
-                // Dispatch job with delay
-                // Initial: 5-12 min random interval
+              
                 $delayMinutes = ($jobsCreated + 1) * rand(2, 4);
 
-dispatch(new SendInitialEmailJob($campaignEmail->id))
-    ->delay(now()->addMinutes($delayMinutes));
+// dispatch(new SendInitialEmailJob($campaignEmail->id))
+//     ->delay(now()->addMinutes($delayMinutes));
 
+           ObanService::insertEmailJob(
+    $campaignEmail->id,
+    ($jobsCreated + 1) * rand(4, 8)
+);
                 $jobsCreated++;
             }
         }
+
+ 
 
         return response()->json([
             'success'    => true,
