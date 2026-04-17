@@ -6,6 +6,7 @@
     <title>Login — Domain Outreach</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+           @import url('https://fonts.googleapis.com/css2?family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap');
         :root {
             --bg-primary: #0a0a0f;
             --bg-secondary: #13131a;
@@ -15,7 +16,7 @@
         }
         body {
             background: var(--bg-primary);
-            font-family: 'Segoe UI', system-ui, sans-serif;
+             font-family: "Urbanist", sans-serif;
         }
         @keyframes float {
             0%, 100% { transform: translateY(0px); }

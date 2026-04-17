@@ -88,7 +88,7 @@ $delayMinutes = ($dispatched + 1) * rand(1, 3);
 
     ObanService::insertFollowUpJob(
     $email->id,
-    ($dispatched + 1) * rand(1, 4)
+    ($dispatched + 1) * rand(2, 4)
 );
 
             $dispatched++;

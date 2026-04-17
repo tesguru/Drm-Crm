@@ -7,6 +7,7 @@
     <title>@yield('title', 'Domain Outreach')</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+          @import url('https://fonts.googleapis.com/css2?family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap');
         :root {
             --bg-primary: #0a0a0f;
             --bg-secondary: #13131a;
@@ -20,11 +21,11 @@
             --accent-amber: #f59e0b;
             --accent-red: #ef4444;
         }
-        body {
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            font-family: 'Segoe UI', system-ui, sans-serif;
-        }
+      body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  font-family: "Urbanist", sans-serif;
+}
         .sidebar {
             width: 260px;
             min-height: 100vh;
@@ -185,6 +186,10 @@
             .main-content { margin-left: 0; }
         }
     </style>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
 </head>
 <body>
 

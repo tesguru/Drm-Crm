@@ -244,7 +244,7 @@ class CampaignController extends Controller
 
            ObanService::insertEmailJob(
     $campaignEmail->id,
-    ($jobsCreated + 1) * rand(4, 8)
+    ($jobsCreated + 1) * rand(2, 4)
 );
                 $jobsCreated++;
             }
