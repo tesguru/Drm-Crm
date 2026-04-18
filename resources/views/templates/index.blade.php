@@ -466,8 +466,15 @@ async function saveTemplate() {
     const subject = document.getElementById('tplSubject').value.trim();
     const body    = document.getElementById('tplBody').value.trim();
 
-    if (!name || !body) {
-        toast('Error', 'Name and body are required', 'error');
+    console.log('Saving template:', {name, type, subject, body});
+
+    if (!name) {
+        toast('Error', 'Name is required', 'error');
+        return;
+    }
+
+    if (!body) {
+        toast('Error', 'Body is required', 'error');
         return;
     }
 
@@ -476,21 +483,42 @@ async function saveTemplate() {
         return;
     }
 
-    const res = await apiPost('/api/templates', {
-        name,
-        type,
-        subject_template: subject || 'Re: {domain} domain',
-        body_template:    body
-    });
+    try {
+        const response = await fetch('/api/templates', {
+            method: 'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                'X-CSRF-TOKEN':  document.querySelector(
+                    'meta[name="csrf-token"]'
+                ).content,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                name:             name,
+                type:             type,
+                subject_template: subject || 'Re: {domain} domain',
+                body_template:    body
+            })
+        });
 
-    if (res.success) {
-        toast('Saved! ✅', 'Template saved', 'success');
-        document.getElementById('tplName').value    = '';
-        document.getElementById('tplSubject').value = '';
-        document.getElementById('tplBody').value    = '';
-        loadTemplates(type);
-    } else {
-        toast('Error', res.error, 'error');
+        console.log('Response status:', response.status);
+
+        const res = await response.json();
+        console.log('Response:', res);
+
+        if (res.success) {
+            toast('Saved! ✅', 'Template saved', 'success');
+            document.getElementById('tplName').value    = '';
+            document.getElementById('tplSubject').value = '';
+            document.getElementById('tplBody').value    = '';
+            loadTemplates(type);
+        } else {
+            toast('Error', res.error || res.message, 'error');
+        }
+
+    } catch (error) {
+        console.error('Save error:', error);
+        toast('Error', 'Failed to save: ' + error.message, 'error');
     }
 }
 

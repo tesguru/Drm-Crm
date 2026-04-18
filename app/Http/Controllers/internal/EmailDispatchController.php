@@ -87,9 +87,7 @@ class EmailDispatchController extends Controller
         return response()->json(['error' => $result['error']], 500);
     }
 
-    // ============================================================
-    // SEND FOLLOW-UP EMAIL — called by Elixir Oban worker
-    // ============================================================
+   
     public function sendFollowUp(Request $request)
     {
         $email = CampaignEmail::with(['campaign', 'gmailAccount'])

@@ -46,7 +46,7 @@ class TemplateController extends Controller
     {
         $request->validate([
             'name'             => 'required|string|max:255',
-            'type'             => 'required|in:bulk_template,followup_1,followup_2,followup_3',
+            'type'             => 'required|string',
             'subject_template' => 'required|string',
             'body_template'    => 'required|string',
             'category'         => 'nullable|string',
