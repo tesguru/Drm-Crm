@@ -93,8 +93,171 @@ class CampaignController extends Controller
         ]);
     }
 
-    // Create campaign and dispatch send jobs
     public function store(Request $request)
+{
+    $request->validate([
+        'name'             => 'required|string|max:255',
+        'domain'           => 'required|string',
+        'price'            => 'required|string',
+        'your_name'        => 'required|string',
+        'recipients'       => 'required|string',
+        'gmail_accounts'   => 'required|array|min:1',
+        'gmail_accounts.*' => 'exists:gmail_accounts,id',
+        'split_mode'       => 'required|in:equal,custom',
+        'custom_splits'    => 'nullable|array',
+    ]);
+
+    // Check duplicate campaign name
+    $exists = Campaign::where('user_id', Auth::id())
+                      ->where('name', $request->name)
+                      ->exists();
+
+    if ($exists) {
+        return response()->json([
+            'success' => false,
+            'error'   => "Campaign \"{$request->name}\" already exists."
+        ]);
+    }
+
+    // Parse recipients
+    $recipients = preg_split('/[\n,;]+/', $request->recipients);
+    $recipients = array_values(array_filter(
+        array_map('trim', $recipients),
+        fn($e) => filter_var($e, FILTER_VALIDATE_EMAIL)
+    ));
+
+    if (empty($recipients)) {
+        return response()->json([
+            'success' => false,
+            'error'   => 'No valid email addresses found'
+        ]);
+    }
+
+    // Get Gmail accounts
+    $accounts = GmailAccount::where('user_id', Auth::id())
+                            ->whereIn('id', $request->gmail_accounts)
+                            ->where('is_active', true)
+                            ->get();
+
+    if ($accounts->isEmpty()) {
+        return response()->json([
+            'success' => false,
+            'error'   => 'No active Gmail accounts found'
+        ]);
+    }
+
+    // Check templates exist
+    $templateCount = EmailTemplate::where('user_id', Auth::id())
+                                  ->where('type', 'bulk_template')
+                                  ->where('is_active', true)
+                                  ->count();
+
+    if ($templateCount === 0) {
+        return response()->json([
+            'success' => false,
+            'error'   => 'No bulk_template templates found. Please create at least one.'
+        ]);
+    }
+
+    // Split recipients across accounts
+    $splits = $this->splitRecipients(
+        $recipients,
+        $accounts,
+        $request->split_mode,
+        $request->custom_splits ?? []
+    );
+
+    // Create Gmail label using first account
+    $firstAccount = $accounts->first();
+    $gmailService = new GmailService($firstAccount);
+    $labelName    = "Outbound - {$request->domain}";
+    $labelResult  = $gmailService->getOrCreateLabel($labelName);
+    $labelId      = $labelResult['success'] ? $labelResult['label_id'] : null;
+
+    // Create campaign
+    $campaign = Campaign::create([
+        'user_id'        => Auth::id(),
+        'name'           => $request->name,
+        'domain'         => $request->domain,
+        'price'          => $request->price,
+        'your_name'      => $request->your_name,
+        'label_name'     => $labelName,
+        'gmail_label_id' => $labelId,
+        'status'         => 'active',
+        'total_emails'   => count($recipients),
+    ]);
+
+    // Create email records + dispatch jobs
+    $jobsCreated = 0;
+
+    foreach ($splits as $accountId => $accountRecipients) {
+        $account = $accounts->firstWhere('id', $accountId);
+        $delay   = 0; // ✅ each account gets its own delay — runs in parallel
+
+        foreach ($accountRecipients as $recipientEmail) {
+            // Get random template
+            $template = EmailTemplate::getRandomByType(
+                userId: Auth::id(),
+                type: 'bulk_template'
+            );
+
+            if (!$template) continue;
+
+            // Extract names
+            $names = GmailService::extractNamesFromEmail(
+                $recipientEmail,
+                $request->domain
+            );
+
+            // Personalize
+            $personalized = $template->personalize([
+                'company'   => $names['company_name'],
+                'domain'    => $request->domain,
+                'price'     => $request->price,
+                'firstName' => $names['first_name'],
+                'yourName'  => $request->your_name,
+            ]);
+
+            // Create email record
+            $campaignEmail = CampaignEmail::create([
+                'campaign_id'      => $campaign->id,
+                'user_id'          => Auth::id(),
+                'gmail_account_id' => $account->id,
+                'to_email'         => $recipientEmail,
+                'from_email'       => $account->email,
+                'first_name'       => $names['first_name'],
+                'company_name'     => $names['company_name'],
+                'subject'          => $personalized['subject'],
+                'body'             => $personalized['body'],
+                'gmail_label_id'   => $labelId,
+                'template_type'    => 'bulk_template',
+                'template_number'  => $template->id,
+                'status'           => 'pending',
+            ]);
+
+            // ✅ 2-4 mins after previous email on THIS account only
+            $delay += rand(2, 4);
+
+            ObanService::insertEmailJob($campaignEmail->id, $delay);
+
+            $jobsCreated++;
+        }
+    }
+
+    return response()->json([
+        'success'  => true,
+        'message'  => "Campaign created! {$jobsCreated} emails queued.",
+        'campaign' => [
+            'id'           => $campaign->id,
+            'name'         => $campaign->name,
+            'total_emails' => count($recipients),
+            'jobs_queued'  => $jobsCreated,
+            'label'        => $labelName,
+        ]
+    ]);
+}
+    // Create campaign and dispatch send jobs
+    public function storejj(Request $request)
     {
         $request->validate([
             'name'            => 'required|string|max:255',
@@ -241,12 +404,9 @@ class CampaignController extends Controller
 
 // dispatch(new SendInitialEmailJob($campaignEmail->id))
 //     ->delay(now()->addMinutes($delayMinutes));
+$delay += rand(2, 4); // ✅ just 2-4 mins after previous
 
-           ObanService::insertEmailJob(
-    $campaignEmail->id,
-    ($jobsCreated + 1) * rand(2, 4)
-);
-                $jobsCreated++;
+ObanService::insertEmailJob($campaignEmail->id, $delay);
             }
         }
 

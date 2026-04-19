@@ -52,60 +52,57 @@ class FollowUpController extends Controller
     // Unlimited follow-ups — only skips replied emails
     // ============================================================
     public function send($campaignId)
-    {
-        $campaign = Campaign::where('user_id', Auth::id())
-                            ->findOrFail($campaignId);
+{
+    $campaign = Campaign::where('user_id', Auth::id())
+                        ->findOrFail($campaignId);
 
-        // Get ALL sent emails without reply — no limit
-        $emails = CampaignEmail::where('campaign_id', $campaign->id)
-                               ->where('status', 'sent')
-                               ->where('has_reply', false)
-                               ->get();
+    // Get ALL sent emails without reply — no limit
+    $emails = CampaignEmail::where('campaign_id', $campaign->id)
+                           ->where('status', 'sent')
+                           ->where('has_reply', false)
+                           ->get();
 
-        if ($emails->isEmpty()) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'No eligible emails for follow-up. Either all replied or none sent yet.'
-            ]);
-        }
+    if ($emails->isEmpty()) {
+        return response()->json([
+            'success' => false,
+            'error'   => 'No eligible emails for follow-up. Either all replied or none sent yet.'
+        ]);
+    }
 
-        $dispatched = 0;
-        $skipped    = 0;
-        $delay      = 0;
+    $dispatched = 0;
+    $skipped    = 0;
 
-        foreach ($emails as $email) {
+    // ✅ group emails by gmail account
+    $grouped = $emails->groupBy('gmail_account_id');
+
+    foreach ($grouped as $accountId => $accountEmails) {
+        $delay = 0; // ✅ each account gets its own delay — runs in parallel
+
+        foreach ($accountEmails as $email) {
             if (!$email->canReceiveFollowUp()) {
                 $skipped++;
                 continue;
             }
 
-         
-       // Follow-ups — 3 to 6 minutes
-$delayMinutes = ($dispatched + 1) * rand(1, 3);
+            // ✅ 2-4 mins after previous email on THIS account only
+            $delay += rand(2, 4);
 
-// dispatch(new SendFollowUpEmailJob($email->id))
-//     ->delay(now()->addMinutes($delayMinutes));
-
-    ObanService::insertFollowUpJob(
-    $email->id,
-    ($dispatched + 1) * rand(2, 4)
-);
+            ObanService::insertFollowUpJob($email->id, $delay);
 
             $dispatched++;
         }
-
-        return response()->json([
-            'success'    => true,
-            'message'    => "{$dispatched} follow-ups queued!",
-            'dispatched' => $dispatched,
-            'skipped'    => $skipped,
-            'estimate'   => $this->estimateTime($dispatched),
-        ]);
     }
 
-    // ============================================================
-    // CHECK REPLIES VIA GMAIL API
-    // ============================================================
+    return response()->json([
+        'success'    => true,
+        'message'    => "{$dispatched} follow-ups queued!",
+        'dispatched' => $dispatched,
+        'skipped'    => $skipped,
+        'estimate'   => $this->estimateTime($dispatched),
+    ]);
+}
+
+
     public function checkReplies($campaignId)
     {
         $campaign = Campaign::where('user_id', Auth::id())
