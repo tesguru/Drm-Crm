@@ -673,7 +673,6 @@ async function sendFollowUps() {
             '🔄 Queued!',
             `${res.dispatched} queued · `
             + `${res.skipped} skipped · `
-            + `${res.bounced} bounced · `  // ← added
             + `${res.estimate}`,
             'success'
         );
