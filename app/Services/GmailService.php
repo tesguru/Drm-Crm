@@ -649,4 +649,155 @@ public static function cleanContent(string $text): string
 
     return trim($text);
 }
+
+public function checkBounces(): array
+{
+    try {
+        $this->refreshIfExpired();
+
+        // ✅ Comprehensive bounce detection query
+        $results = $this->gmail->users_messages->listUsersMessages('me', [
+            'q' => implode(' OR ', [
+                'from:mailer-daemon',
+                'from:postmaster',
+                'from:Mail_Delivery_Subsystem',
+                'subject:"Delivery Status Notification"',
+                'subject:"Mail delivery failed"',
+                'subject:"Undeliverable"',
+                'subject:"Delivery Failure"',
+                'subject:"Failed to deliver"',
+                'subject:"returned mail"',
+                'subject:"delivery failed"',
+                'subject:"Unable to deliver"',
+                'subject:"Mail System Error"',
+                'subject:"Returned mail"',
+            ]) . ' newer_than:7d',
+            'maxResults' => 200,
+        ]);
+
+        $messages = $results->getMessages() ?? [];
+        $bounced  = [];
+
+        foreach ($messages as $msg) {
+            $full = $this->gmail->users_messages->get(
+                'me',
+                $msg->getId(),
+                [
+                    'format'          => 'full',
+                    'metadataHeaders' => ['Subject', 'From', 'To'],
+                ]
+            );
+
+            $headers = $full->getPayload()->getHeaders();
+            $subject = '';
+            $from    = '';
+
+            foreach ($headers as $header) {
+                $name = strtolower($header->getName());
+                if ($name === 'subject') $subject = $header->getValue();
+                if ($name === 'from')    $from    = $header->getValue();
+            }
+
+            // ✅ Extract bounced email from subject
+            $extracted = $this->extractBouncedEmails($subject, $from);
+            $bounced   = array_merge($bounced, $extracted);
+
+            // ✅ Also check email body for bounced address
+            $body = $this->getEmailBody($full);
+            if ($body) {
+                $fromBody = $this->extractBouncedEmails($body, '');
+                $bounced  = array_merge($bounced, $fromBody);
+            }
+        }
+
+        // Remove our own email from list
+        $bounced = array_filter($bounced, function($email) {
+            return $email !== strtolower($this->account->email);
+        });
+
+        return array_values(array_unique($bounced));
+
+    } catch (\Exception $e) {
+        Log::error('Bounce check failed', [
+            'account' => $this->account->email,
+            'error'   => $e->getMessage(),
+        ]);
+        return [];
+    }
+}
+
+// ============================================================
+// EXTRACT BOUNCED EMAILS FROM TEXT
+// ============================================================
+private function extractBouncedEmails(string $text, string $from): array
+{
+    $bounced  = [];
+    $ourEmail = strtolower($this->account->email);
+
+    // Common bounce subject patterns
+    $patterns = [
+        // "Delivery failed for user@domain.com"
+        '/(?:failed|failure|undeliverable|returned|bounced)\s+(?:to|for|message to)?\s*([\w.+-]+@[\w-]+\.[\w.]+)/i',
+        
+        // "user@domain.com: User unknown"
+        '/([\w.+-]+@[\w-]+\.[\w.]+)\s*[:\-]\s*(?:user unknown|no such user|invalid|does not exist|mailbox full)/i',
+        
+        // Any email in bounce context
+        '/(?:recipient|address|email).*?([\w.+-]+@[\w-]+\.[\w.]+)/i',
+        
+        // Fallback — any email in text
+        '/([\w.+-]+@[\w-]+\.[\w.]+)/i',
+    ];
+
+    foreach ($patterns as $pattern) {
+        if (preg_match_all($pattern, $text, $matches)) {
+            foreach ($matches[1] as $email) {
+                $email = strtolower(trim($email));
+                // Skip our own email and common system emails
+                if ($email !== $ourEmail &&
+                    !str_contains($email, 'mailer-daemon') &&
+                    !str_contains($email, 'postmaster') &&
+                    !str_contains($email, 'noreply') &&
+                    !str_contains($email, 'no-reply')) {
+                    $bounced[] = $email;
+                }
+            }
+        }
+    }
+
+    return $bounced;
+}
+
+// ============================================================
+// GET EMAIL BODY TEXT
+// ============================================================
+private function getEmailBody($message): ?string
+{
+    try {
+        $payload = $message->getPayload();
+        
+        // Try direct body first
+        $body = $payload->getBody()->getData();
+        if ($body) {
+            return base64_decode(strtr($body, '-_', '+/'));
+        }
+
+        // Try parts
+        $parts = $payload->getParts() ?? [];
+        foreach ($parts as $part) {
+            if ($part->getMimeType() === 'text/plain') {
+                $data = $part->getBody()->getData();
+                if ($data) {
+                    return base64_decode(strtr($data, '-_', '+/'));
+                }
+            }
+        }
+
+        return null;
+    } catch (\Exception $e) {
+        return null;
+    }
+}
+
+
 }
