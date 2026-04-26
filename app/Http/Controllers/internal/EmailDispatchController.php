@@ -88,7 +88,7 @@ class EmailDispatchController extends Controller
     }
 
    
-   public function sendFollowUp(Request $request)
+public function sendFollowUp(Request $request)
 {
     $email = CampaignEmail::with(['campaign', 'gmailAccount'])
                           ->find($request->campaign_email_id);
@@ -97,7 +97,6 @@ class EmailDispatchController extends Controller
         return response()->json(['error' => 'Email not found'], 404);
     }
 
-  
     if ($email->has_reply) {
         return response()->json(['status' => 'has_reply_skipped']);
     }
@@ -106,7 +105,6 @@ class EmailDispatchController extends Controller
         return response()->json(['error' => 'Not sent yet'], 400);
     }
 
-   
     if ($email->last_follow_up_at &&
         $email->last_follow_up_at->diffInMinutes(now()) < 30) {
         return response()->json(['status' => 'too_soon_skipped']);
@@ -120,12 +118,11 @@ class EmailDispatchController extends Controller
 
     $gmail = new GmailService($account);
 
-  
-    $bouncedEmails = $gmail->checkBounces();
-    if (in_array(strtolower($email->to_email), array_map('strtolower', $bouncedEmails))) {
-        $email->markAsReplied(); // ← reuse reply system to stop follow-ups
+    // ✅ Check if thread has bounce message
+    if ($email->gmail_thread_id && $gmail->threadHasBounce($email->gmail_thread_id)) {
+        $email->markAsReplied();
         $email->campaign->refreshStats();
-        Log::info('Bounce detected — marked as replied to stop follow-ups', [
+        Log::info('Bounce detected in thread — stopping follow-ups', [
             'to' => $email->to_email
         ]);
         return response()->json(['status' => 'bounced_skipped']);
@@ -141,7 +138,6 @@ class EmailDispatchController extends Controller
         return response()->json(['status' => 'reply_detected_skipped']);
     }
 
-    // Get follow-up template
     $followUpType = $email->nextFollowUpType();
     $template     = EmailTemplate::getRandomByType(
         userId: $email->user_id,

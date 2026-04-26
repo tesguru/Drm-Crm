@@ -800,4 +800,54 @@ private function getEmailBody($message): ?string
 }
 
 
+public function threadHasBounce(string $threadId): bool
+{
+    try {
+        $this->refreshIfExpired();
+
+        $thread   = $this->gmail->users_threads->get('me', $threadId);
+        $messages = $thread->getMessages();
+
+        foreach ($messages as $message) {
+            $headers = $message->getPayload()->getHeaders();
+
+            foreach ($headers as $header) {
+                $name  = strtolower($header->getName());
+                $value = strtolower($header->getValue());
+
+                // Check if any message in thread is from mailer-daemon
+                if ($name === 'from' && (
+                    str_contains($value, 'mailer-daemon') ||
+                    str_contains($value, 'postmaster') ||
+                    str_contains($value, 'mail delivery') ||
+                    str_contains($value, 'delivery subsystem')
+                )) {
+                    return true;
+                }
+
+                // Check subject for bounce indicators
+                if ($name === 'subject' && (
+                    str_contains($value, 'delivery failed') ||
+                    str_contains($value, 'undeliverable') ||
+                    str_contains($value, 'mail delivery failed') ||
+                    str_contains($value, 'delivery status notification') ||
+                    str_contains($value, 'returned mail')
+                )) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+
+    } catch (\Exception $e) {
+        Log::error('Thread bounce check failed', [
+            'thread_id' => $threadId,
+            'error'     => $e->getMessage(),
+        ]);
+        return false;
+    }
+}
+
+
 }
