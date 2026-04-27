@@ -69,17 +69,11 @@ async function loadCampaign() {
 
         {{-- Stats --}}
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            ${statBox('Total', c.total_emails,
-                'var(--accent-blue)')}
-            ${statBox('Sent', c.sent_count,
-                'var(--accent-green)')}
-            ${statBox('Replied', c.replied_count,
-                'var(--accent-purple)')}
-            ${statBox('Follow-ups', c.follow_up_count,
-                'var(--accent-amber)')}
-            ${statBox('Failed',
-                c.emails.filter(e => e.status === 'failed').length,
-                'var(--accent-red)')}
+           ${statBox('Total',      c.total_emails,   'var(--accent-blue)')}
+${statBox('Sent',       c.sent_count,     'var(--accent-green)')}
+${statBox('Replied',    c.replied_count,  'var(--accent-purple)')}
+${statBox('Bounced',    c.bounce_count,   'var(--accent-red)')}      // ← ADD
+${statBox('Follow-ups', c.follow_up_count,'var(--accent-amber)')}
         </div>
 
         {{-- Live Queue Tracker --}}
@@ -418,16 +412,14 @@ function buildEmailsTable(emails) {
                                     ${e.status}
                                 </span>
                             </td>
-                            <td class="py-3 px-3">
-                                ${e.has_reply
-                                    ? `<span class="badge-green">
-                                           ✅ Replied
-                                       </span>`
-                                    : `<span class="badge-blue">
-                                           ⏳ Waiting
-                                       </span>`
-                                }
-                            </td>
+                           <td class="py-3 px-3">
+    ${e.has_bounce
+        ? `<span class="badge-red">💀 Bounced</span>`
+        : e.has_reply
+            ? `<span class="badge-green">✅ Replied</span>`
+            : `<span class="badge-blue">⏳ Waiting</span>`
+    }
+</td>
                             <td class="py-3 px-3">
                                 <span class="font-bold"
                                       style="color: ${
@@ -486,7 +478,8 @@ function templateBadge(type) {
 function statusBadge(status) {
     return status === 'sent'    ? 'badge-green' :
            status === 'pending' ? 'badge-amber' :
-           status === 'failed'  ? 'badge-red'   : 'badge-blue';
+           status === 'failed'  ? 'badge-red'   :
+           status === 'bounced' ? 'badge-red'   : 'badge-blue'; // ← ADD
 }
 
 function filterEmails() {

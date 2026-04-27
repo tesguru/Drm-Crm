@@ -27,14 +27,29 @@ class CampaignEmail extends Model
         'follow_up_count',
         'last_follow_up_at',
         'sent_at',
+          'has_bounce',  
+    'bounced_at', 
     ];
 
-    protected $casts = [
-        'has_reply'         => 'boolean',
-        'replied_at'        => 'datetime',
-        'last_follow_up_at' => 'datetime',
-        'sent_at'           => 'datetime',
-    ];
+   protected $casts = [
+    'has_reply'         => 'boolean',
+    'has_bounce'        => 'boolean',  // ← ADD
+    'replied_at'        => 'datetime',
+    'bounced_at'        => 'datetime', // ← ADD
+    'last_follow_up_at' => 'datetime',
+    'sent_at'           => 'datetime',
+];
+
+public function markAsBounced(): void
+{
+    $this->update([
+        'has_bounce' => true,
+        'bounced_at' => now(),
+        'status'     => 'bounced',
+    ]);
+}
+
+
 
     // ============================================================
     // RELATIONSHIPS
@@ -59,10 +74,11 @@ class CampaignEmail extends Model
     // Only stops when recipient replies
     // ============================================================
     public function canReceiveFollowUp(): bool
-    {
-        return !$this->has_reply
-            && $this->status === 'sent';
-    }
+{
+    return !$this->has_reply
+        && !$this->has_bounce  // ← ADD
+        && $this->status === 'sent';
+}
 
     // ============================================================
     // NEXT FOLLOW-UP TYPE

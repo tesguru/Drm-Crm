@@ -127,14 +127,10 @@ class EmailDispatchController extends Controller
             $isBounced = $gmail->threadHasBounce($email->gmail_thread_id);
 
             if ($isBounced) {
-                // Reuse reply system to stop all future follow-ups
-                $email->markAsReplied();
+              
+              $email->markAsBounced();
                 $email->campaign->refreshStats();
 
-                Log::info('Bounce detected in thread — stopping follow-ups', [
-                    'to'        => $email->to_email,
-                    'thread_id' => $email->gmail_thread_id,
-                ]);
 
                 return response()->json(['status' => 'bounced_skipped']);
             }
