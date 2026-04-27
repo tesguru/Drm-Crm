@@ -893,6 +893,34 @@ public function threadHasBounce(string $threadId): bool
         return false;
     }
 }
+public function debugThread(string $threadId): void
+{
+    $this->refreshIfExpired();
 
+    $thread = $this->gmail->users_threads->get('me', $threadId, ['format' => 'metadata']);
+    $messages = $thread->getMessages();
+
+    echo 'Total messages: ' . count($messages) . PHP_EOL;
+
+    foreach ($messages as $i => $message) {
+        echo PHP_EOL . '=== Message ' . $i . ' (ID: ' . $message->getId() . ') ===' . PHP_EOL;
+
+        $full = $this->gmail->users_messages->get('me', $message->getId(), [
+            'format'          => 'metadata',
+            'metadataHeaders' => ['From', 'Subject', 'Return-Path', 'Content-Type', 'X-Failed-Recipients', 'Auto-Submitted'],
+        ]);
+
+        $payload = $full->getPayload();
+
+        if (!$payload) {
+            echo 'PAYLOAD IS NULL' . PHP_EOL;
+            continue;
+        }
+
+        foreach ($payload->getHeaders() as $header) {
+            echo $header->getName() . ': ' . $header->getValue() . PHP_EOL;
+        }
+    }
+}
 
 }
