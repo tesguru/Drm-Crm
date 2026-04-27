@@ -33,6 +33,7 @@ class CampaignController extends Controller
                     'sent_count'     => $campaign->sent_count,
                     'replied_count'  => $campaign->replied_count,
                     'follow_up_count'=> $campaign->follow_up_count,
+                    'bounce_count'   => $campaign->bounce_count,
                     'pending_count'  => $campaign->emails()
                                                   ->where('status', 'pending')
                                                   ->count(),
@@ -87,6 +88,7 @@ class CampaignController extends Controller
                 'total_emails'   => $campaign->total_emails,
                 'sent_count'     => $campaign->sent_count,
                 'replied_count'  => $campaign->replied_count,
+                'bounce_count'   => $campaign->bounce_count,
                 'follow_up_count'=> $campaign->follow_up_count,
                 'emails'         => $emails,
             ]
