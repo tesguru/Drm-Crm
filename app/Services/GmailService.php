@@ -923,4 +923,25 @@ public function debugThread(string $threadId): void
     }
 }
 
+public function findThreadByEmail(string $email): void
+{
+    $this->refreshIfExpired();
+
+    $results = $this->gmail->users_threads->listUsersThreads('me', [
+        'q'          => 'from:' . $email . ' OR to:' . $email,
+        'maxResults' => 10,
+    ]);
+
+    $threads = $results->getThreads() ?? [];
+
+    if (empty($threads)) {
+        echo 'No threads found for: ' . $email . PHP_EOL;
+        return;
+    }
+
+    foreach ($threads as $thread) {
+        echo 'Thread ID: ' . $thread->getId() . PHP_EOL;
+    }
+}
+
 }
