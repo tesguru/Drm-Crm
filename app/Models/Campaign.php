@@ -19,6 +19,7 @@ class Campaign extends Model
         'sent_count',
         'replied_count',
         'follow_up_count',
+        'bounce_count',
     ];
 
     // ============================================================
@@ -53,18 +54,21 @@ class Campaign extends Model
     // REFRESH CAMPAIGN STATS
     // Call after every send or follow-up
     // ============================================================
-    public function refreshStats(): void
-    {
-        $this->update([
-            'total_emails'    => $this->emails()->count(),
-            'sent_count'      => $this->emails()
-                                      ->where('status', 'sent')
-                                      ->count(),
-            'replied_count'   => $this->emails()
-                                      ->where('has_reply', true)
-                                      ->count(),
-            'follow_up_count' => $this->emails()
-                                      ->sum('follow_up_count'),
-        ]);
-    }
+  public function refreshStats(): void
+{
+    $this->update([
+        'total_emails'    => $this->emails()->count(),
+        'sent_count'      => $this->emails()
+                                  ->where('status', 'sent')
+                                  ->count(),
+        'replied_count'   => $this->emails()
+                                  ->where('has_reply', true)
+                                  ->count(),
+        'bounce_count'    => $this->emails()        // ← ADD
+                                  ->where('has_bounce', true)
+                                  ->count(),
+        'follow_up_count' => $this->emails()
+                                  ->sum('follow_up_count'),
+    ]);
+}
 }

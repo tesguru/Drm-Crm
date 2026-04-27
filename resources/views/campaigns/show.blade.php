@@ -72,7 +72,7 @@ async function loadCampaign() {
            ${statBox('Total',      c.total_emails,   'var(--accent-blue)')}
 ${statBox('Sent',       c.sent_count,     'var(--accent-green)')}
 ${statBox('Replied',    c.replied_count,  'var(--accent-purple)')}
-${statBox('Bounced',    c.bounce_count,   'var(--accent-red)')}      // ← ADD
+${statBox('Bounced',    c.bounce_count,   'var(--accent-red)')}      
 ${statBox('Follow-ups', c.follow_up_count,'var(--accent-amber)')}
         </div>
 
