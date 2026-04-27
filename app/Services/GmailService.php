@@ -805,33 +805,65 @@ public function threadHasBounce(string $threadId): bool
     try {
         $this->refreshIfExpired();
 
-        $thread   = $this->gmail->users_threads->get('me', $threadId);
+        $thread   = $this->gmail->users_threads->get('me', $threadId, [
+            'format' => 'metadata', // ← ADD THIS
+        ]);
         $messages = $thread->getMessages();
 
         foreach ($messages as $message) {
-            $headers = $message->getPayload()->getHeaders();
+            // ↓ Fetch each message individually — thread payload is truncated
+            $full = $this->gmail->users_messages->get(
+                'me',
+                $message->getId(),
+                [
+                    'format'          => 'metadata',
+                    'metadataHeaders' => ['From', 'Subject', 'Return-Path', 'Content-Type', 'X-Failed-Recipients', 'Auto-Submitted'],
+                ]
+            );
 
-            foreach ($headers as $header) {
+            $payload = $full->getPayload();
+            if (!$payload) continue;
+
+            foreach ($payload->getHeaders() as $header) {
                 $name  = strtolower($header->getName());
                 $value = strtolower($header->getValue());
 
-                // Check FROM header for bounce senders
+                // ✅ Strongest signal — RFC standard empty return path
+                if ($name === 'return-path' && trim($value) === '<>') {
+                    Log::info('Bounce return-path detected', ['thread_id' => $threadId]);
+                    return true;
+                }
+
+                // ✅ RFC 3464 DSN standard
+                if ($name === 'content-type' && str_contains($value, 'multipart/report')) {
+                    Log::info('Bounce content-type detected', ['thread_id' => $threadId]);
+                    return true;
+                }
+
+                // ✅ Explicit MTA bounce header
+                if ($name === 'x-failed-recipients') {
+                    Log::info('Bounce x-failed-recipients detected', ['thread_id' => $threadId]);
+                    return true;
+                }
+
+                // ✅ Auto-generated system message
+                if ($name === 'auto-submitted' && $value !== 'no') {
+                    Log::info('Bounce auto-submitted detected', ['thread_id' => $threadId]);
+                    return true;
+                }
+
                 if ($name === 'from') {
                     if (
-                        str_contains($value, 'mailer-daemon') ||
-                        str_contains($value, 'postmaster')    ||
-                        str_contains($value, 'mail delivery') ||
+                        str_contains($value, 'mailer-daemon')      ||
+                        str_contains($value, 'postmaster')          ||
+                        str_contains($value, 'mail delivery')       ||
                         str_contains($value, 'delivery subsystem')
                     ) {
-                        Log::info('Bounce sender detected', [
-                            'thread_id' => $threadId,
-                            'from'      => $value,
-                        ]);
+                        Log::info('Bounce sender detected', ['thread_id' => $threadId, 'from' => $value]);
                         return true;
                     }
                 }
 
-                // Check SUBJECT header for bounce keywords
                 if ($name === 'subject') {
                     if (
                         str_contains($value, 'delivery failed')              ||
@@ -840,12 +872,11 @@ public function threadHasBounce(string $threadId): bool
                         str_contains($value, 'delivery status notification') ||
                         str_contains($value, 'returned mail')                ||
                         str_contains($value, 'failed to deliver')            ||
-                        str_contains($value, 'unable to deliver')
+                        str_contains($value, 'unable to deliver')            ||
+                        str_contains($value, 'non-delivery')                 ||
+                        str_contains($value, 'undelivered mail')
                     ) {
-                        Log::info('Bounce subject detected', [
-                            'thread_id' => $threadId,
-                            'subject'   => $value,
-                        ]);
+                        Log::info('Bounce subject detected', ['thread_id' => $threadId, 'subject' => $value]);
                         return true;
                     }
                 }
