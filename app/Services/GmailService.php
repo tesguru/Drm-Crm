@@ -816,8 +816,8 @@ public function threadHasBounce(string $threadId): bool
                 'me',
                 $message->getId(),
                 [
-                    'format'          => 'metadata',
-                    'metadataHeaders' => ['From', 'Subject', 'Return-Path', 'Content-Type', 'X-Failed-Recipients', 'Auto-Submitted'],
+                    'format'          => 'metadata'
+                  
                 ]
             );
 
