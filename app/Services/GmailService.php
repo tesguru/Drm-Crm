@@ -815,25 +815,39 @@ public function threadHasBounce(string $threadId): bool
                 $name  = strtolower($header->getName());
                 $value = strtolower($header->getValue());
 
-                // Check if any message in thread is from mailer-daemon
-                if ($name === 'from' && (
-                    str_contains($value, 'mailer-daemon') ||
-                    str_contains($value, 'postmaster') ||
-                    str_contains($value, 'mail delivery') ||
-                    str_contains($value, 'delivery subsystem')
-                )) {
-                    return true;
+                // Check FROM header for bounce senders
+                if ($name === 'from') {
+                    if (
+                        str_contains($value, 'mailer-daemon') ||
+                        str_contains($value, 'postmaster')    ||
+                        str_contains($value, 'mail delivery') ||
+                        str_contains($value, 'delivery subsystem')
+                    ) {
+                        Log::info('Bounce sender detected', [
+                            'thread_id' => $threadId,
+                            'from'      => $value,
+                        ]);
+                        return true;
+                    }
                 }
 
-                // Check subject for bounce indicators
-                if ($name === 'subject' && (
-                    str_contains($value, 'delivery failed') ||
-                    str_contains($value, 'undeliverable') ||
-                    str_contains($value, 'mail delivery failed') ||
-                    str_contains($value, 'delivery status notification') ||
-                    str_contains($value, 'returned mail')
-                )) {
-                    return true;
+                // Check SUBJECT header for bounce keywords
+                if ($name === 'subject') {
+                    if (
+                        str_contains($value, 'delivery failed')              ||
+                        str_contains($value, 'undeliverable')                ||
+                        str_contains($value, 'mail delivery failed')         ||
+                        str_contains($value, 'delivery status notification') ||
+                        str_contains($value, 'returned mail')                ||
+                        str_contains($value, 'failed to deliver')            ||
+                        str_contains($value, 'unable to deliver')
+                    ) {
+                        Log::info('Bounce subject detected', [
+                            'thread_id' => $threadId,
+                            'subject'   => $value,
+                        ]);
+                        return true;
+                    }
                 }
             }
         }
@@ -841,7 +855,7 @@ public function threadHasBounce(string $threadId): bool
         return false;
 
     } catch (\Exception $e) {
-        Log::error('Thread bounce check failed', [
+        Log::error('threadHasBounce failed', [
             'thread_id' => $threadId,
             'error'     => $e->getMessage(),
         ]);

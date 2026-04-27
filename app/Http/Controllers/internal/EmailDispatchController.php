@@ -88,111 +88,129 @@ class EmailDispatchController extends Controller
     }
 
    
-public function sendFollowUp(Request $request)
-{
-    $email = CampaignEmail::with(['campaign', 'gmailAccount'])
-                          ->find($request->campaign_email_id);
+    public function sendFollowUp(Request $request)
+    {
+        $email = CampaignEmail::with(['campaign', 'gmailAccount'])
+                              ->find($request->campaign_email_id);
 
-    if (!$email) {
-        return response()->json(['error' => 'Email not found'], 404);
-    }
+        if (!$email) {
+            return response()->json(['error' => 'Email not found'], 404);
+        }
 
-    if ($email->has_reply) {
-        return response()->json(['status' => 'has_reply_skipped']);
-    }
+        // Skip if already marked as replied or bounced
+        if ($email->has_reply) {
+            return response()->json(['status' => 'has_reply_skipped']);
+        }
 
-    if ($email->status !== 'sent') {
-        return response()->json(['error' => 'Not sent yet'], 400);
-    }
+        // Skip if not sent yet
+        if ($email->status !== 'sent') {
+            return response()->json(['error' => 'Not sent yet'], 400);
+        }
 
-    if ($email->last_follow_up_at &&
-        $email->last_follow_up_at->diffInMinutes(now()) < 30) {
-        return response()->json(['status' => 'too_soon_skipped']);
-    }
+        // Prevent duplicate — skip if sent in last 30 mins
+        if ($email->last_follow_up_at &&
+            $email->last_follow_up_at->diffInMinutes(now()) < 30) {
+            return response()->json(['status' => 'too_soon_skipped']);
+        }
 
-    $account = $email->gmailAccount;
+        $account = $email->gmailAccount;
 
-    if (!$account || !$account->is_active) {
-        return response()->json(['error' => 'Account inactive'], 400);
-    }
+        if (!$account || !$account->is_active) {
+            return response()->json(['error' => 'Account inactive'], 400);
+        }
 
-    $gmail = new GmailService($account);
+        $gmail = new GmailService($account);
 
-    // ✅ Check if thread has bounce message
-    if ($email->gmail_thread_id && $gmail->threadHasBounce($email->gmail_thread_id)) {
-        $email->markAsReplied();
-        $email->campaign->refreshStats();
-        Log::info('Bounce detected in thread — stopping follow-ups', [
-            'to' => $email->to_email
-        ]);
-        return response()->json(['status' => 'bounced_skipped']);
-    }
+        // ✅ Step 1 — Check if thread has bounce message
+        // Bounce reply from Gmail lands in same thread
+        if ($email->gmail_thread_id) {
+            $isBounced = $gmail->threadHasBounce($email->gmail_thread_id);
 
-    // ✅ Check reply via Gmail API
-    if ($gmail->threadHasReply($email->gmail_thread_id, $email->to_email)) {
-        $email->markAsReplied();
-        $email->campaign->refreshStats();
-        Log::info('Reply detected — skipping follow-up', [
-            'to' => $email->to_email
-        ]);
-        return response()->json(['status' => 'reply_detected_skipped']);
-    }
+            if ($isBounced) {
+                // Reuse reply system to stop all future follow-ups
+                $email->markAsReplied();
+                $email->campaign->refreshStats();
 
-    $followUpType = $email->nextFollowUpType();
-    $template     = EmailTemplate::getRandomByType(
-        userId: $email->user_id,
-        type: $followUpType,
-        excludeNumber: $email->template_number
-    );
+                Log::info('Bounce detected in thread — stopping follow-ups', [
+                    'to'        => $email->to_email,
+                    'thread_id' => $email->gmail_thread_id,
+                ]);
 
-    if (!$template) {
-        Log::warning('No follow-up template found', [
-            'type' => $followUpType,
-            'to'   => $email->to_email,
-        ]);
-        return response()->json(['error' => 'No template found'], 400);
-    }
+                return response()->json(['status' => 'bounced_skipped']);
+            }
+        }
 
-    $personalized = $template->personalize([
-        'company'   => $email->company_name,
-        'domain'    => $email->campaign->domain,
-        'price'     => $email->campaign->price,
-        'firstName' => $email->first_name,
-        'yourName'  => $email->campaign->your_name,
-    ]);
+        // ✅ Step 2 — Check if recipient actually replied
+        if ($email->gmail_thread_id &&
+            $gmail->threadHasReply($email->gmail_thread_id, $email->to_email)) {
+            $email->markAsReplied();
+            $email->campaign->refreshStats();
 
-    $result = $gmail->sendFollowUp(
-        $email->to_email,
-        $email->subject,
-        $personalized['body'],
-        $email->gmail_thread_id,
-        $email->gmail_message_id,
-        $email->gmail_label_id
-    );
+            Log::info('Reply detected — skipping follow-up', [
+                'to' => $email->to_email
+            ]);
 
-    if ($result['success']) {
-        $email->incrementFollowUp();
-        $email->update([
-            'template_number' => $template->id,
-            'template_type'   => $followUpType,
-        ]);
-        $email->campaign->refreshStats();
+            return response()->json(['status' => 'reply_detected_skipped']);
+        }
 
-        Log::info('Follow-up sent', [
-            'to'           => $email->to_email,
-            'follow_up_no' => $email->follow_up_count,
-            'type'         => $followUpType,
-            'thread_id'    => $email->gmail_thread_id,
+        // ✅ Step 3 — Get follow-up template
+        $followUpType = $email->nextFollowUpType();
+        $template     = EmailTemplate::getRandomByType(
+            userId: $email->user_id,
+            type: $followUpType,
+            excludeNumber: $email->template_number
+        );
+
+        if (!$template) {
+            Log::warning('No follow-up template found', [
+                'type' => $followUpType,
+                'to'   => $email->to_email,
+            ]);
+            return response()->json(['error' => 'No template found'], 400);
+        }
+
+        // ✅ Step 4 — Personalize and send
+        $personalized = $template->personalize([
+            'company'   => $email->company_name,
+            'domain'    => $email->campaign->domain,
+            'price'     => $email->campaign->price,
+            'firstName' => $email->first_name,
+            'yourName'  => $email->campaign->your_name,
         ]);
 
-        return response()->json(['status' => 'followup_sent']);
+        $result = $gmail->sendFollowUp(
+            $email->to_email,
+            $email->subject,
+            $personalized['body'],
+            $email->gmail_thread_id,
+            $email->gmail_message_id,
+            $email->gmail_label_id
+        );
+
+        if ($result['success']) {
+            $email->incrementFollowUp();
+            $email->update([
+                'template_number' => $template->id,
+                'template_type'   => $followUpType,
+            ]);
+            $email->campaign->refreshStats();
+
+            Log::info('Follow-up sent', [
+                'to'           => $email->to_email,
+                'follow_up_no' => $email->follow_up_count,
+                'type'         => $followUpType,
+                'thread_id'    => $email->gmail_thread_id,
+            ]);
+
+            return response()->json(['status' => 'followup_sent']);
+        }
+
+        Log::error('Follow-up failed', [
+            'campaign_email_id' => $email->id,
+            'error'             => $result['error'],
+        ]);
+
+        return response()->json(['error' => $result['error']], 500);
     }
 
-    Log::error('Follow-up failed', [
-        'campaign_email_id' => $email->id,
-        'error'             => $result['error'],
-    ]);
-
-    return response()->json(['error' => $result['error']], 500);
-}
 }
