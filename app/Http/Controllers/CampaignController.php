@@ -238,7 +238,7 @@ class CampaignController extends Controller
             ]);
 
             // ✅ 2-4 mins after previous email on THIS account only
-            $delay += rand(4, 10);
+            $delay += rand(1, 2);
 
             ObanService::insertEmailJob($campaignEmail->id, $delay);
 
