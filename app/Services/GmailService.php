@@ -454,27 +454,63 @@ protected function buildRawMessage(
     string $subject,
     string $body,
     string $senderName,
+    ?string $inReplyTo  = null,
+    ?string $references = null,
     bool $html = false
 ): string {
-    $domain = substr(strrchr($from, "@"), 1) ?: 'gmail.com';
-    // Randomize the ID slightly to look like a client-side generator
-    $messageId = sprintf('<%s.%s@%s>', bin2hex(random_bytes(8)), bin2hex(random_bytes(4)), $domain);
+    // 1. Manual Gmail Message-IDs usually look like this: 
+    // <unique_hash@mail.gmail.com> or <hash@domain>
+    // We use a specific format that mimics the internal Google generator
+    $messageId = sprintf(
+        '<%s@mail.gmail.com>', 
+        str_replace('.', '', uniqid('', true))
+    );
 
+    // 2. Manual Gmail uses UTF-8 Base64 encoding for Subjects
+    $encodedSubject = "=?UTF-8?B?" . base64_encode($subject) . "?=";
+
+    // 3. Boundary for Multipart (Gmail Web always uses this)
+    $boundary = "000000000000" . bin2hex(random_bytes(8));
+
+    // 4. Mimic the exact Header Order of the Gmail Web Client
     $headers = [
         "MIME-Version: 1.0",
         "Date: " . date('r'),
         "Message-ID: {$messageId}",
-        "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=",
+        "Subject: {$encodedSubject}",
         "From: \"{$senderName}\" <{$from}>",
         "To: <{$to}>",
-        "X-Mailer: Microsoft Outlook 16.0", // High trust "Corporate" signature
-        "Thread-Index: " . base64_encode(random_bytes(12)), // Adds "Human" metadata
-        "Content-Type: " . ($html ? "text/html" : "text/plain") . "; charset=UTF-8",
-        "Content-Transfer-Encoding: quoted-printable",
     ];
 
-    $mime = implode("\r\n", $headers) . "\r\n\r\n" . quoted_printable_encode($body);
-    return rtrim(strtr(base64_encode($mime), '+/', '-_'), '=');
+    if ($inReplyTo) {
+        $headers[] = "In-Reply-To: <" . trim($inReplyTo, '<>') . ">";
+        $headers[] = "References: <" . trim($references, '<>') . ">";
+    }
+
+    // Manual Gmail sends Multipart/Alternative to be safe
+    $headers[] = "Content-Type: multipart/alternative; boundary=\"{$boundary}\"";
+
+    // 5. Build the Body with the Boundary
+    // This mimics how the Web UI packages the message
+    $mimeBody = "--{$boundary}\r\n";
+    $mimeBody .= "Content-Type: text/plain; charset=\"UTF-8\"\r\n";
+    $mimeBody .= "Content-Transfer-Encoding: quoted-printable\r\n\r\n";
+    $mimeBody .= quoted_printable_encode(strip_tags($body)) . "\r\n\r\n";
+
+    if ($html) {
+        $mimeBody .= "--{$boundary}\r\n";
+        $mimeBody .= "Content-Type: text/html; charset=\"UTF-8\"\r\n";
+        $mimeBody .= "Content-Transfer-Encoding: quoted-printable\r\n\r\n";
+        $mimeBody .= quoted_printable_encode($body) . "\r\n\r\n";
+    }
+
+    $mimeBody .= "--{$boundary}--";
+
+    // 6. Combine Headers and Body
+    $fullMime = implode("\r\n", $headers) . "\r\n\r\n" . $mimeBody;
+
+    // 7. URL-safe Base64 for Gmail API
+    return rtrim(strtr(base64_encode($fullMime), '+/', '-_'), '=');
 }
     // protected function buildRawMessage(
     //     string $from,
