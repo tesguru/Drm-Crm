@@ -98,14 +98,21 @@
                            style="color: var(--text-secondary);">
                         Recipients * (paste all at once)
                     </label>
-                    <span id="recipientCount"
-                          class="badge-blue">0 emails</span>
+                    <span id="recipientCount" class="badge-blue">0 emails</span>
                 </div>
                 <textarea id="campRecipients"
                           rows="6"
                           class="input font-mono text-sm"
                           placeholder="john@business.com&#10;mary@company.com&#10;bob@agency.com&#10;..."
-                          oninput="countRecipients()"></textarea>
+                          oninput="countRecipients()"
+                          onpaste="handleRecipientPaste(event)"></textarea>
+
+                {{-- Clean result feedback --}}
+                <div id="cleanFeedback" class="hidden mt-2 text-xs px-3 py-2 rounded-lg"
+                     style="background: rgba(16,185,129,0.08);
+                            color: var(--accent-green);
+                            border: 1px solid rgba(16,185,129,0.2);">
+                </div>
             </div>
 
             {{-- Gmail Accounts --}}
@@ -222,13 +229,24 @@
 @endsection
 @section('scripts')
 <script>
-let splitMode    = 'equal';
-let allAccounts  = [];
+let splitMode   = 'equal';
+let allAccounts = [];
 
 document.addEventListener('DOMContentLoaded', () => {
     loadCampaigns();
     loadAccountCheckboxes();
 });
+
+/* ── Paste handler — no timeout, no limit ── */
+function handleRecipientPaste(event) {
+    event.preventDefault();
+    const pasted = (event.clipboardData || window.clipboardData).getData('text');
+    const el     = document.getElementById('campRecipients');
+    const start  = el.selectionStart;
+    const end    = el.selectionEnd;
+    el.value     = el.value.substring(0, start) + pasted + el.value.substring(end);
+    cleanRecipients();
+}
 
 async function loadCampaigns() {
     const res = await apiGet('/api/campaigns');
@@ -279,11 +297,11 @@ async function loadCampaigns() {
             </div>
 
             <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                ${statBox('Total', c.total_emails, 'var(--accent-blue)')}
-                ${statBox('Sent', c.sent_count, 'var(--accent-green)')}
-                ${statBox('Replied', c.replied_count, 'var(--accent-purple)')}
+                ${statBox('Total',      c.total_emails,    'var(--accent-blue)')}
+                ${statBox('Sent',       c.sent_count,      'var(--accent-green)')}
+                ${statBox('Replied',    c.replied_count,   'var(--accent-purple)')}
                 ${statBox('Follow-ups', c.follow_up_count, 'var(--accent-amber)')}
-                ${statBox('Failed', c.failed_count, 'var(--accent-red)')}
+                ${statBox('Failed',     c.failed_count,    'var(--accent-red)')}
             </div>
 
             ${c.pending_count > 0 ? `
@@ -313,9 +331,9 @@ function statBox(label, value, color) {
 }
 
 async function loadAccountCheckboxes() {
-    const res     = await apiGet('/api/gmail-accounts');
-    allAccounts   = res.accounts || [];
-    const el      = document.getElementById('accountCheckboxes');
+    const res   = await apiGet('/api/gmail-accounts');
+    allAccounts = res.accounts || [];
+    const el    = document.getElementById('accountCheckboxes');
 
     if (!allAccounts.length) {
         el.innerHTML = `
@@ -352,12 +370,53 @@ async function loadAccountCheckboxes() {
 
 function countRecipients() {
     const val  = document.getElementById('campRecipients').value;
-    const list = val.split(/[\n,;]+/)
-                    .map(e => e.trim())
-                    .filter(e => e.includes('@'));
+    const list = val.split(/[\n,;|\s]+/)
+                    .map(e => e.trim().toLowerCase())
+                    .filter(e => e.includes('@') && e.includes('.'));
     const el   = document.getElementById('recipientCount');
     el.textContent = `${list.length} emails`;
     el.className   = list.length > 0 ? 'badge-green' : 'badge-red';
+}
+
+/* ── Clean, format & deduplicate emails ── */
+function cleanRecipients() {
+    const raw    = document.getElementById('campRecipients').value;
+    const tokens = raw.split(/[\n\r,;|\s\t]+/);
+
+    const seen    = new Set();
+    const valid   = [];
+    const invalid = [];
+
+    tokens.forEach(token => {
+        const email = token.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '').toLowerCase();
+        if (!email) return;
+
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            if (!seen.has(email)) {
+                seen.add(email);
+                valid.push(email);
+            }
+        } else {
+            invalid.push(token.trim());
+        }
+    });
+
+    document.getElementById('campRecipients').value = valid.join('\n');
+
+    const countEl       = document.getElementById('recipientCount');
+    countEl.textContent = `${valid.length} emails`;
+    countEl.className   = valid.length > 0 ? 'badge-green' : 'badge-red';
+
+    const before   = tokens.filter(t => t.trim()).length;
+    const dupes    = before - invalid.length - valid.length;
+    const feedback = document.getElementById('cleanFeedback');
+    feedback.classList.remove('hidden');
+
+    const parts = [`✅ ${valid.length} clean emails`];
+    if (dupes > 0)          parts.push(`🗑️ ${dupes} duplicate${dupes > 1 ? 's' : ''} removed`);
+    if (invalid.length > 0) parts.push(`⚠️ ${invalid.length} invalid skipped`);
+
+    feedback.textContent = parts.join('  ·  ');
 }
 
 function setSplitMode(mode) {
@@ -451,9 +510,8 @@ async function createCampaign() {
         return;
     }
 
-    // Check if any active template contains {price}
-    const res = await apiGet('/api/templates?type=bulk_template');
-    const templates = res.templates || [];
+    const res         = await apiGet('/api/templates?type=bulk_template');
+    const templates   = res.templates || [];
     const hasPriceVar = templates.some(t =>
         t.subject_template?.includes('{price}') ||
         t.body_template?.includes('{price}')
@@ -521,13 +579,11 @@ async function deleteCampaign(id) {
 }
 
 function showCreateModal() {
-    document.getElementById('createModal')
-            .classList.remove('hidden');
+    document.getElementById('createModal').classList.remove('hidden');
 }
 
 function hideCreateModal() {
-    document.getElementById('createModal')
-            .classList.add('hidden');
+    document.getElementById('createModal').classList.add('hidden');
 }
 </script>
 @endsection
