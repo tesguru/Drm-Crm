@@ -64,9 +64,21 @@
         </div>
     </div>
 
-    {{-- Create Template Form --}}
+    {{-- Create / Edit Template Form --}}
     <div class="card">
-        <h2 class="text-lg font-bold mb-6">➕ Create Template</h2>
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-lg font-bold" id="formTitle">
+                ➕ Create Template
+            </h2>
+            <button id="cancelEditBtn"
+                    onclick="cancelEdit()"
+                    class="hidden text-xs px-3 py-1.5 rounded-lg"
+                    style="background: var(--bg-tertiary);
+                           color: var(--text-secondary);
+                           border: 1px solid var(--border-color);">
+                ✕ Cancel Edit
+            </button>
+        </div>
 
         <div class="space-y-4">
 
@@ -117,6 +129,19 @@
                    style="color: var(--text-secondary);">
                     💡 Follow-ups use original subject with Re: prefix
                 </p>
+                {{-- Subject variable buttons --}}
+                <div class="flex flex-wrap gap-2 mt-2">
+                    @foreach(['{company}', '{domain}', '{price}', '{firstName}', '{yourName}'] as $var)
+                    <button type="button"
+                            onclick="insertSubjectVar('{{ $var }}')"
+                            class="text-xs px-2 py-1 rounded-lg font-mono font-bold transition-all hover:scale-105"
+                            style="background: rgba(59,130,246,0.1);
+                                   color: var(--accent-blue);
+                                   border: 1px solid rgba(59,130,246,0.2);">
+                        {{ $var }}
+                    </button>
+                    @endforeach
+                </div>
             </div>
 
             {{-- Body --}}
@@ -131,13 +156,13 @@
                           placeholder="Hi {firstName},&#10;&#10;..."></textarea>
             </div>
 
-            {{-- Variables --}}
+            {{-- Variables for body --}}
             <div class="p-4 rounded-xl"
                  style="background: rgba(59,130,246,0.08);
                         border: 1px solid rgba(59,130,246,0.2);">
                 <p class="text-xs font-bold mb-3"
                    style="color: var(--accent-blue);">
-                    📌 Click to insert:
+                    📌 Click to insert into body:
                 </p>
                 <div class="flex flex-wrap gap-2">
                     @foreach([
@@ -147,7 +172,8 @@
                         '{firstName}' => 'First Name',
                         '{yourName}'  => 'Your Name',
                     ] as $var => $desc)
-                    <button onclick="insertVar('{{ $var }}')"
+                    <button type="button"
+                            onclick="insertVar('{{ $var }}')"
                             class="text-xs px-3 py-1.5 rounded-lg
                                    font-mono font-bold transition-all
                                    hover:scale-105"
@@ -173,43 +199,45 @@
                     📋 Load Sample:
                 </p>
                 <div class="flex flex-wrap gap-2">
-                    <button onclick="loadSample('initial')"
+                    <button type="button"
+                            onclick="loadSample('initial')"
                             class="text-xs px-3 py-1.5 rounded-lg"
                             style="background: rgba(16,185,129,0.15);
                                    color: var(--accent-green);
-                                   border: 1px solid
-                                   rgba(16,185,129,0.3);">
+                                   border: 1px solid rgba(16,185,129,0.3);">
                         📧 Initial
                     </button>
-                    <button onclick="loadSample('followup1')"
+                    <button type="button"
+                            onclick="loadSample('followup1')"
                             class="text-xs px-3 py-1.5 rounded-lg"
                             style="background: rgba(16,185,129,0.15);
                                    color: var(--accent-green);
-                                   border: 1px solid
-                                   rgba(16,185,129,0.3);">
+                                   border: 1px solid rgba(16,185,129,0.3);">
                         🔄 FU 1
                     </button>
-                    <button onclick="loadSample('followup2')"
+                    <button type="button"
+                            onclick="loadSample('followup2')"
                             class="text-xs px-3 py-1.5 rounded-lg"
                             style="background: rgba(16,185,129,0.15);
                                    color: var(--accent-green);
-                                   border: 1px solid
-                                   rgba(16,185,129,0.3);">
+                                   border: 1px solid rgba(16,185,129,0.3);">
                         🔄 FU 2
                     </button>
-                    <button onclick="loadSample('followupgeneric')"
+                    <button type="button"
+                            onclick="loadSample('followupgeneric')"
                             class="text-xs px-3 py-1.5 rounded-lg"
                             style="background: rgba(16,185,129,0.15);
                                    color: var(--accent-green);
-                                   border: 1px solid
-                                   rgba(16,185,129,0.3);">
+                                   border: 1px solid rgba(16,185,129,0.3);">
                         🔄 Generic FU
                     </button>
                 </div>
             </div>
 
             {{-- Save --}}
-            <button onclick="saveTemplate()"
+            <button type="button"
+                    id="saveBtn"
+                    onclick="saveTemplate()"
                     class="btn-primary w-full py-4 text-lg">
                 💾 Save Template
             </button>
@@ -217,10 +245,77 @@
     </div>
 </div>
 
+{{-- Price Prompt Modal --}}
+<div id="priceModal"
+     class="hidden fixed inset-0 z-[60] flex items-center
+            justify-center p-4"
+     style="background: rgba(0,0,0,0.85);">
+
+    <div class="w-full max-w-md rounded-2xl"
+         style="background: var(--bg-secondary);
+                border: 1px solid var(--border-color);">
+
+        <div class="p-6 border-b"
+             style="border-color: var(--border-color);">
+            <h2 class="text-xl font-bold">
+                💰 Enter Price
+            </h2>
+            <p class="text-sm mt-1"
+               style="color: var(--text-secondary);">
+                Your template contains {price}.
+                Enter the price to use for this send.
+            </p>
+        </div>
+
+        <div class="p-6">
+            <div class="mb-4">
+                <label class="block text-sm font-semibold mb-2"
+                       style="color: var(--text-secondary);">
+                    Price *
+                </label>
+                <input type="text"
+                       id="priceInput"
+                       placeholder="e.g. $2,499 or $1,999"
+                       class="input w-full text-lg"
+                       style="font-weight: bold;"
+                       onkeydown="if(event.key==='Enter') confirmPrice()">
+                <p class="text-xs mt-2"
+                   style="color: var(--text-secondary);">
+                    💡 Leave empty to use campaign default:
+                    <span id="defaultPrice"
+                          class="font-bold"
+                          style="color: var(--accent-blue);">
+                    </span>
+                </p>
+            </div>
+
+            <div class="flex gap-3">
+                <button type="button"
+                        onclick="cancelPrice()"
+                        class="flex-1 py-3 rounded-xl
+                               font-semibold text-sm"
+                        style="background: var(--bg-tertiary);
+                               color: var(--text-secondary);
+                               border: 1px solid var(--border-color);">
+                    Cancel
+                </button>
+                <button type="button"
+                        onclick="confirmPrice()"
+                        class="flex-1 py-3 rounded-xl
+                               font-bold text-sm text-white"
+                        style="background: var(--accent-blue);">
+                    ✅ Use This Price
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 @section('scripts')
 <script>
-let currentType = 'bulk_template';
+let currentType       = 'bulk_template';
+let editingTemplateId = null;
 
 const samples = {
     initial: {
@@ -281,17 +376,16 @@ document.addEventListener('DOMContentLoaded', () => {
     switchType('bulk_template');
 });
 
+// ── Tab switching ──────────────────────────────────────────────
 function switchType(type) {
     currentType = type;
 
-    // Reset all tabs
     document.querySelectorAll('[id^="tab-"]').forEach(t => {
         t.style.background  = 'var(--bg-secondary)';
         t.style.color       = 'var(--text-secondary)';
         t.style.borderColor = 'var(--border-color)';
     });
 
-    // Activate current tab
     const active = document.getElementById(`tab-${type}`);
     if (active) {
         active.style.background  = 'rgba(59,130,246,0.15)';
@@ -299,14 +393,12 @@ function switchType(type) {
         active.style.borderColor = 'var(--accent-blue)';
     }
 
-    // Update label
     const label = type === 'bulk_template'
         ? '📧 Initial Outbound Templates'
         : `🔄 Follow-up ${type.replace('followup_', '')} Templates`;
 
     document.getElementById('typeLabel').textContent = label;
 
-    // Show info banner for follow-ups
     const banner = document.getElementById('typeBanner');
     const num    = parseInt(type.replace('followup_', ''));
 
@@ -331,10 +423,8 @@ function switchType(type) {
         banner.classList.add('hidden');
     }
 
-    // Sync form select
     document.getElementById('tplType').value = type;
     onTypeChange();
-
     loadTemplates(type);
 }
 
@@ -348,15 +438,11 @@ function onTypeChange() {
         subNote.classList.add('hidden');
     }
 
-    // Sync tab
-    switchTypeFromSelect(type);
-}
-
-function switchTypeFromSelect(type) {
     currentType = type;
     loadTemplates(type);
 }
 
+// ── Sample loader ──────────────────────────────────────────────
 function loadSample(key) {
     const sample = samples[key];
     if (!sample) return;
@@ -365,9 +451,9 @@ function loadSample(key) {
     document.getElementById('tplBody').value    = sample.body;
 
     const typeMap = {
-        initial:       'bulk_template',
-        followup1:     'followup_1',
-        followup2:     'followup_2',
+        initial:         'bulk_template',
+        followup1:       'followup_1',
+        followup2:       'followup_2',
         followupgeneric: currentType !== 'bulk_template'
             ? currentType
             : 'followup_3',
@@ -380,6 +466,7 @@ function loadSample(key) {
     toast('Loaded', 'Sample template loaded', 'success');
 }
 
+// ── Load templates list ────────────────────────────────────────
 async function loadTemplates(type) {
     const res = await apiGet(`/api/templates?type=${type}`);
     const el  = document.getElementById('templatesList');
@@ -387,8 +474,8 @@ async function loadTemplates(type) {
 
     const countEl = document.getElementById('templateCount');
     countEl.textContent = `${cnt}/6`;
-    countEl.className   = cnt >= 6 ? 'badge-red'   :
-                          cnt >= 4 ? 'badge-amber'  : 'badge-blue';
+    countEl.className   = cnt >= 6 ? 'badge-red'  :
+                          cnt >= 4 ? 'badge-amber' : 'badge-blue';
 
     if (!res.success || !cnt) {
         el.innerHTML = `
@@ -405,24 +492,39 @@ async function loadTemplates(type) {
         return;
     }
 
-    el.innerHTML = res.templates.map((t, i) => `
-        <div class="card mb-3 transition-all
-                    hover:border-blue-500/30"
+    el.innerHTML = res.templates.map((t, i) => {
+        // Safely encode body for the onclick attribute
+        const safeBody    = t.body_template.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+        const safeName    = t.name.replace(/`/g, '\\`');
+        const safeSubject = t.subject_template.replace(/`/g, '\\`');
+
+        return `
+        <div class="card mb-3 transition-all hover:border-blue-500/30"
              style="border: 1px solid var(--border-color);">
             <div class="flex items-start justify-between mb-3">
                 <div class="flex items-center gap-2">
-                    <span class="text-xs px-2 py-1 rounded-full
-                                 font-bold"
+                    <span class="text-xs px-2 py-1 rounded-full font-bold"
                           style="background: rgba(59,130,246,0.15);
                                  color: var(--accent-blue);">
                         #${i + 1}
                     </span>
                     <p class="font-bold">${t.name}</p>
                 </div>
-                <button onclick="deleteTemplate(${t.id})"
-                        class="btn-danger text-xs px-3 py-1.5">
-                    🗑️
-                </button>
+                <div class="flex gap-2">
+                    <button type="button"
+                            onclick="editTemplate(${t.id}, \`${safeName}\`, \`${t.type}\`, \`${safeSubject}\`, \`${safeBody}\`)"
+                            class="text-xs px-3 py-1.5 rounded-lg"
+                            style="background: rgba(59,130,246,0.15);
+                                   color: var(--accent-blue);
+                                   border: 1px solid rgba(59,130,246,0.3);">
+                        ✏️ Edit
+                    </button>
+                    <button type="button"
+                            onclick="deleteTemplate(${t.id})"
+                            class="btn-danger text-xs px-3 py-1.5">
+                        🗑️
+                    </button>
+                </div>
             </div>
             <div class="p-2 rounded-lg mb-2"
                  style="background: var(--bg-tertiary);">
@@ -440,14 +542,14 @@ async function loadTemplates(type) {
                 </p>
                 <p class="text-xs font-mono whitespace-pre-wrap"
                    style="color: var(--text-secondary);">
-${t.body_template.substring(0, 150)}${
-    t.body_template.length > 150 ? '...' : ''}
+                    ${t.body_template.substring(0, 150)}${t.body_template.length > 150 ? '...' : ''}
                 </p>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
+// ── Insert variable into BODY ──────────────────────────────────
 function insertVar(variable) {
     const body  = document.getElementById('tplBody');
     const start = body.selectionStart;
@@ -460,13 +562,71 @@ function insertVar(variable) {
     body.focus();
 }
 
+// ── Insert variable into SUBJECT ──────────────────────────────
+function insertSubjectVar(variable) {
+    const input = document.getElementById('tplSubject');
+    const start = input.selectionStart;
+    const end   = input.selectionEnd;
+    input.value = input.value.substring(0, start)
+                + variable
+                + input.value.substring(end);
+    input.selectionStart =
+    input.selectionEnd   = start + variable.length;
+    input.focus();
+}
+
+// ── Edit template — populate form ─────────────────────────────
+function editTemplate(id, name, type, subject, body) {
+    editingTemplateId = id;
+
+    document.getElementById('tplName').value    = name;
+    document.getElementById('tplType').value    = type;
+    document.getElementById('tplSubject').value = subject;
+    document.getElementById('tplBody').value    = body;
+
+    // Update form UI to show edit mode
+    document.getElementById('formTitle').textContent    = '✏️ Edit Template';
+    document.getElementById('cancelEditBtn').classList.remove('hidden');
+
+    const btn           = document.getElementById('saveBtn');
+    btn.textContent     = '💾 Update Template';
+    btn.style.background = 'rgba(245,158,11,0.85)';
+
+    // Sync type note
+    const subNote = document.getElementById('subjectNote');
+    if (type !== 'bulk_template') {
+        subNote.classList.remove('hidden');
+    } else {
+        subNote.classList.add('hidden');
+    }
+
+    // Scroll to form
+    document.getElementById('saveBtn').scrollIntoView({ behavior: 'smooth', block: 'end' });
+    toast('Editing', `Editing "${name}" — make changes and save`, 'info');
+}
+
+// ── Cancel edit — reset form ──────────────────────────────────
+function cancelEdit() {
+    editingTemplateId = null;
+
+    document.getElementById('tplName').value    = '';
+    document.getElementById('tplSubject').value = '';
+    document.getElementById('tplBody').value    = '';
+
+    document.getElementById('formTitle').textContent = '➕ Create Template';
+    document.getElementById('cancelEditBtn').classList.add('hidden');
+
+    const btn           = document.getElementById('saveBtn');
+    btn.textContent     = '💾 Save Template';
+    btn.style.background = '';
+}
+
+// ── Save / Update template ────────────────────────────────────
 async function saveTemplate() {
     const name    = document.getElementById('tplName').value.trim();
     const type    = document.getElementById('tplType').value;
     const subject = document.getElementById('tplSubject').value.trim();
     const body    = document.getElementById('tplBody').value.trim();
-
-    console.log('Saving template:', {name, type, subject, body});
 
     if (!name) {
         toast('Error', 'Name is required', 'error');
@@ -483,34 +643,53 @@ async function saveTemplate() {
         return;
     }
 
+    const url    = editingTemplateId
+        ? `/api/templates/${editingTemplateId}`
+        : '/api/templates';
+    const method = editingTemplateId ? 'PUT' : 'POST';
+
+    const btn       = document.getElementById('saveBtn');
+    btn.textContent = editingTemplateId ? '⏳ Updating...' : '⏳ Saving...';
+    btn.disabled    = true;
+
     try {
-        const response = await fetch('/api/templates', {
-            method: 'POST',
+        const response = await fetch(url, {
+            method,
             headers: {
-                'Content-Type':  'application/json',
-                'X-CSRF-TOKEN':  document.querySelector(
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector(
                     'meta[name="csrf-token"]'
                 ).content,
-                'Accept': 'application/json'
+                'Accept': 'application/json',
             },
             body: JSON.stringify({
-                name:             name,
-                type:             type,
+                name,
+                type,
                 subject_template: subject || 'Re: {domain} domain',
-                body_template:    body
-            })
+                body_template:    body,
+            }),
         });
 
-        console.log('Response status:', response.status);
-
         const res = await response.json();
-        console.log('Response:', res);
 
         if (res.success) {
-            toast('Saved! ✅', 'Template saved', 'success');
+            toast(
+                'Saved! ✅',
+                editingTemplateId ? 'Template updated' : 'Template saved',
+                'success'
+            );
+
+            // Reset form
             document.getElementById('tplName').value    = '';
             document.getElementById('tplSubject').value = '';
             document.getElementById('tplBody').value    = '';
+
+            editingTemplateId = null;
+            document.getElementById('formTitle').textContent = '➕ Create Template';
+            document.getElementById('cancelEditBtn').classList.add('hidden');
+            btn.textContent     = '💾 Save Template';
+            btn.style.background = '';
+
             loadTemplates(type);
         } else {
             toast('Error', res.error || res.message, 'error');
@@ -519,9 +698,15 @@ async function saveTemplate() {
     } catch (error) {
         console.error('Save error:', error);
         toast('Error', 'Failed to save: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        if (!editingTemplateId) {
+            btn.textContent = '💾 Save Template';
+        }
     }
 }
 
+// ── Delete template ───────────────────────────────────────────
 async function deleteTemplate(id) {
     if (!confirm('Delete this template?')) return;
     const res = await apiDelete(`/api/templates/${id}`);

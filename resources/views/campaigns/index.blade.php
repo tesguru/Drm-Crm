@@ -174,6 +174,51 @@
     </div>
 </div>
 
+{{-- Price Modal --}}
+<div id="priceModal"
+     class="hidden fixed inset-0 z-[60] flex items-center
+            justify-center p-4"
+     style="background: rgba(0,0,0,0.85);">
+    <div class="w-full max-w-md rounded-2xl"
+         style="background: var(--bg-secondary);
+                border: 1px solid var(--border-color);">
+        <div class="p-6 border-b"
+             style="border-color: var(--border-color);">
+            <h2 class="text-xl font-bold">💰 Enter Price</h2>
+            <p class="text-sm mt-1"
+               style="color: var(--text-secondary);">
+                Your template contains {price}. Enter the price to use.
+            </p>
+        </div>
+        <div class="p-6">
+            <input type="text"
+                   id="priceOverrideInput"
+                   placeholder="e.g. $2,499"
+                   class="input w-full text-lg mb-2"
+                   style="font-weight: bold;"
+                   onkeydown="if(event.key==='Enter') confirmCampaignPrice()">
+            <p class="text-xs mb-4"
+               style="color: var(--text-secondary);">
+                💡 Leave empty to use campaign price field value
+            </p>
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('priceModal').classList.add('hidden')"
+                        class="flex-1 py-3 rounded-xl font-semibold text-sm"
+                        style="background: var(--bg-tertiary);
+                               color: var(--text-secondary);
+                               border: 1px solid var(--border-color);">
+                    Cancel
+                </button>
+                <button onclick="confirmCampaignPrice()"
+                        class="flex-1 py-3 rounded-xl font-bold text-sm text-white"
+                        style="background: var(--accent-blue);">
+                    ✅ Use This Price
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 @section('scripts')
 <script>
@@ -386,6 +431,8 @@ async function previewSplit() {
     }
 }
 
+let pendingCampaignPayload = null;
+
 async function createCampaign() {
     const name       = document.getElementById('campName').value.trim();
     const domain     = document.getElementById('campDomain').value.trim();
@@ -404,20 +451,51 @@ async function createCampaign() {
         return;
     }
 
-    const btn      = document.getElementById('createBtn');
-    btn.textContent = '⏳ Creating...';
-    btn.disabled    = true;
+    // Check if any active template contains {price}
+    const res = await apiGet('/api/templates?type=bulk_template');
+    const templates = res.templates || [];
+    const hasPriceVar = templates.some(t =>
+        t.subject_template?.includes('{price}') ||
+        t.body_template?.includes('{price}')
+    );
 
-    const res = await apiPost('/api/campaigns', {
+    pendingCampaignPayload = {
         name,
         domain,
         price,
-        your_name:     yourName,
+        your_name:      yourName,
         recipients,
         gmail_accounts: accounts,
         split_mode:     splitMode,
         custom_splits:  {}
-    });
+    };
+
+    if (hasPriceVar) {
+        document.getElementById('priceOverrideInput').value = '';
+        document.getElementById('priceModal').classList.remove('hidden');
+        return;
+    }
+
+    await submitCampaign(pendingCampaignPayload);
+}
+
+function confirmCampaignPrice() {
+    const override = document.getElementById('priceOverrideInput').value.trim();
+    document.getElementById('priceModal').classList.add('hidden');
+
+    if (override) {
+        pendingCampaignPayload.price = override;
+    }
+
+    submitCampaign(pendingCampaignPayload);
+}
+
+async function submitCampaign(payload) {
+    const btn       = document.getElementById('createBtn');
+    btn.textContent = '⏳ Creating...';
+    btn.disabled    = true;
+
+    const res = await apiPost('/api/campaigns', payload);
 
     btn.textContent = '🚀 Create Campaign & Start Sending';
     btn.disabled    = false;

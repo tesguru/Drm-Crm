@@ -711,5 +711,19 @@ async function retryFailed() {
         toast('Error', res.error, 'error');
     }
 }
+// ============================================================
+// PRICE PROMPT SYSTEM
+// ============================================================
+let pendingAction    = null; // 'initial' or 'followup'
+let pendingPayload   = null; // data to send after price
+
+function checkForPrice(templateBody, action, payload) {
+    if (templateBody && templateBody.includes('{price}')) {
+        showPriceModal(action, payload);
+        return true;
+    }
+    return false;
+}
+
 </script>
 @endsection
