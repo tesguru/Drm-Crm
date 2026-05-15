@@ -23,6 +23,7 @@ class GmailAccountController extends Controller
                     'daily_limit'  => $account->daily_limit,
                     'daily_sent'   => $account->daily_sent,
                     'total_sent'   => $account->total_sent,
+                       'appscript_url'  => $account->appscript_url,
                     'is_active'    => $account->is_active,
                     'remaining'    => $account->remainingToday(),
                     'token_status' => $account->tokenStatus(),
