@@ -72,14 +72,27 @@ public function sendEmail(
     bool $html = false
 ): array {
     try {
-        // ── Route through Apps Script ──────────────────────────────
-        $appScript = new \App\Services\AppScriptMailer();
+        // ── Check account has Apps Script URL ─────────────────────
+        if (empty($this->account->appscript_url)) {
+            Log::error('No appscript_url set for account', [
+                'account' => $this->account->email,
+            ]);
+            return [
+                'success' => false,
+                'error'   => 'No Apps Script URL configured for this account',
+            ];
+        }
+
+        // ── Send via Apps Script ───────────────────────────────────
+        $appScript = new \App\Services\AppScriptMailer(
+            $this->account->appscript_url
+        );
 
         $result = $appScript->send(
             to:         $to,
             subject:    $subject,
             body:       $body,
-            senderName: $this->getSenderName(),  // reuses your existing methodhh
+            senderName: $this->getSenderName(),
         );
 
         if (!$result['success']) {
@@ -91,7 +104,7 @@ public function sendEmail(
             return $result;
         }
 
-        // ── Apply label if provided (Gmail API still works for this) ──
+        // ── Apply label if provided ────────────────────────────────
         if ($labelId && $result['thread_id']) {
             $this->applyLabelToThread($result['thread_id'], $labelId);
         }

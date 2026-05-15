@@ -10,9 +10,9 @@ class AppScriptMailer
     protected string $url;
     protected string $secret;
 
-    public function __construct()
+    public function __construct(string $url)
     {
-        $this->url    = config('services.appscript.url');
+        $this->url    = $url;
         $this->secret = config('services.appscript.secret');
     }
 
@@ -46,7 +46,10 @@ class AppScriptMailer
             ];
 
         } catch (\Exception $e) {
-            Log::error('AppScript HTTP error', ['error' => $e->getMessage()]);
+            Log::error('AppScript HTTP error', [
+                'url'   => $this->url,
+                'error' => $e->getMessage(),
+            ]);
 
             return [
                 'success' => false,
