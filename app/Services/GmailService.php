@@ -79,7 +79,7 @@ public function sendEmail(
             to:         $to,
             subject:    $subject,
             body:       $body,
-            senderName: $this->getSenderName(),  // reuses your existing method
+            senderName: $this->getSenderName(),  // reuses your existing methodhh
         );
 
         if (!$result['success']) {
