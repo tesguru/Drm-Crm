@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 
 Route::get('/internal/send-initial',  [\App\Http\Controllers\Internal\EmailDispatchController::class, 'sendInitial']);
 Route::get('/internal/send-followup', [\App\Http\Controllers\Internal\EmailDispatchController::class, 'sendFollowUp']);
-
+Route::post('/api/gmail-accounts/{id}/appscript', [GmailAccountController::class, 'updateAppScript']);
 
 
 

@@ -103,4 +103,25 @@ class GmailAccountController extends Controller
             'message' => 'Account removed'
         ]);
     }
+
+    public function updateAppScript(Request $request, $id)
+{
+    $request->validate([
+        'appscript_url' => [
+            'required',
+            'url',
+            'starts_with:https://script.google.com/macros/s/',
+        ],
+    ]);
+
+    $account = GmailAccount::where('user_id', auth()->id())
+                           ->findOrFail($id);
+
+    $account->update(['appscript_url' => $request->appscript_url]);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Apps Script URL saved',
+    ]);
+}
 }

@@ -19,6 +19,7 @@ class GmailAccount extends Model
         'is_active',
         'last_used_at',
         'daily_reset_at',
+          'appscript_url',
     ];
 
     protected $casts = [

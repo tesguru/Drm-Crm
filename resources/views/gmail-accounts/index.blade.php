@@ -3,7 +3,6 @@
 @section('content')
 
 <style>
-    /* ── Page header ── */
     .page-header {
         display: flex;
         align-items: center;
@@ -14,7 +13,6 @@
     }
     .page-header h1 { font-size: clamp(1.4rem, 5vw, 1.875rem); }
 
-    /* ── Account card ── */
     .account-card-header {
         display: flex;
         align-items: flex-start;
@@ -42,7 +40,6 @@
         flex-shrink: 0;
     }
 
-    /* ── Token status row ── */
     .token-row {
         display: flex;
         align-items: center;
@@ -55,7 +52,6 @@
         background: var(--bg-tertiary);
     }
 
-    /* ── Stats grid: 3 cols on desktop, 3 cols on mobile too (compact) ── */
     .stats-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -71,7 +67,6 @@
     .stat-box .stat-value { font-size: 1.1rem; font-weight: 700; }
     .stat-box .stat-label { font-size: 0.65rem; color: var(--text-secondary); }
 
-    /* ── Bottom actions row ── */
     .card-actions {
         display: flex;
         gap: 8px;
@@ -86,7 +81,6 @@
     }
     .limit-group input { flex: 1; min-width: 0; }
     .reset-btn {
-        text-sm px-4 py-2 rounded-lg font-medium;
         flex-shrink: 0;
         font-size: 0.8rem;
         padding: 9px 14px;
@@ -99,19 +93,33 @@
         white-space: nowrap;
     }
 
-    /* ── Mobile tweaks ── */
+    .appscript-section {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+    }
+    .appscript-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+    .appscript-row input {
+        flex: 1;
+        min-width: 0;
+        font-size: 0.75rem;
+    }
+
     @media (max-width: 480px) {
-        .account-actions {
-            width: 100%;
-            justify-content: flex-end;
-        }
+        .account-actions { width: 100%; justify-content: flex-end; }
         .card-actions { flex-direction: column; }
         .limit-group { width: 100%; }
         .reset-btn { width: 100%; text-align: center; }
+        .appscript-row { flex-direction: column; }
+        .appscript-row input { width: 100%; }
+        .appscript-row button { width: 100%; }
     }
 </style>
 
-{{-- Page header --}}
 <div class="page-header">
     <div>
         <h1 class="font-bold gradient-text">📧 Gmail Accounts</h1>
@@ -123,7 +131,6 @@
     </a>
 </div>
 
-{{-- Accounts Grid --}}
 <div id="accountsGrid">
     <div class="text-center py-12" style="color: var(--text-secondary);">
         <div class="spinner mx-auto mb-3"></div>
@@ -148,8 +155,7 @@ async function loadAccounts() {
                 <p style="color: var(--text-secondary);" class="mb-6">
                     Connect your Gmail accounts to start sending
                 </p>
-                <a href="{{ route('auth.google.account') }}"
-                   class="btn-green inline-block">
+                <a href="{{ route('auth.google.account') }}" class="btn-green inline-block">
                     ➕ Connect Gmail Account
                 </a>
             </div>`;
@@ -202,6 +208,16 @@ function accountCard(a) {
                🔄 Refresh
            </a>`
         : '';
+
+    const appscriptBadge = a.appscript_url
+        ? `<span class="text-xs px-2 py-0.5 rounded-full"
+                 style="background: rgba(16,185,129,0.15); color: var(--accent-green);">
+               ✅ Configured
+           </span>`
+        : `<span class="text-xs px-2 py-0.5 rounded-full"
+                 style="background: rgba(239,68,68,0.15); color: var(--accent-red);">
+               ⚠️ Not Set
+           </span>`;
 
     return `
     <div class="card" id="account-${a.id}">
@@ -295,6 +311,31 @@ function accountCard(a) {
             </button>
         </div>
 
+        {{-- Apps Script Section --}}
+        <div class="appscript-section">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="text-sm font-semibold">⚡ Apps Script URL</span>
+                ${appscriptBadge}
+            </div>
+            <div class="appscript-row">
+                <input type="text"
+                       id="appscript-${a.id}"
+                       value="${a.appscript_url || ''}"
+                       placeholder="https://script.google.com/macros/s/.../exec"
+                       class="input">
+                <button onclick="saveAppScript(${a.id})"
+                        class="btn-primary text-xs px-3 py-2"
+                        style="white-space:nowrap; flex-shrink:0;">
+                    💾 Save
+                </button>
+            </div>
+            <p class="text-xs mt-2" style="color: var(--text-secondary);">
+                Deploy Apps Script under this Gmail account and paste the Web App URL here.
+                <a href="https://script.google.com" target="_blank"
+                   style="color: var(--accent-blue);">Open Apps Script →</a>
+            </p>
+        </div>
+
     </div>`;
 }
 
@@ -339,6 +380,26 @@ async function deleteAccount(id) {
         loadAccounts();
     } else {
         toast('Error', res.error, 'error');
+    }
+}
+
+async function saveAppScript(id) {
+    const url = document.getElementById(`appscript-${id}`).value.trim();
+
+    if (!url.startsWith('https://script.google.com/macros/s/')) {
+        toast('Error', 'Invalid Apps Script URL', 'error');
+        return;
+    }
+
+    const res = await apiPost(`/api/gmail-accounts/${id}/appscript`, {
+        appscript_url: url
+    });
+
+    if (res.success) {
+        toast('Saved', 'Apps Script URL saved ✅', 'success');
+        loadAccounts();
+    } else {
+        toast('Error', res.error || 'Failed to save', 'error');
     }
 }
 </script>
