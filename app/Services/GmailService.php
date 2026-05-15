@@ -58,130 +58,211 @@ class GmailService
     // ============================================================
     // SEND INITIAL EMAIL  (mirrors Elixir send_email + prepare_email)
     // ============================================================
-    public function sendEmail(
-        string $to,
-        string $subject,
-        string $body,
-        ?string $labelId = null,
-        bool $html = false
-    ): array {
-        try {
-            $this->refreshIfExpired();
-      
-            $raw = $this->buildRawMessage(
-                from:       $this->account->email,
-                to:         $to,
-                subject:    $subject,
-                body:       $body,
-                senderName: $this->getSenderName(),
-                html:       $html,
-            );
+    // ============================================================
 
-            $message = new Message();
-            $message->setRaw($raw);
+public function sendEmail(
+    string $to,
+    string $subject,
+    string $body,
+    ?string $labelId = null,
+    bool $html = false
+): array {
+    try {
+        $this->refreshIfExpired();
 
-            $sent = $this->gmail->users_messages->send('me', $message);
+        // ── Step 1: Build raw message ──────────────────────────────
+        $raw = $this->buildRawMessage(
+            from:       $this->account->email,
+            to:         $to,
+            subject:    $subject,
+            body:       $body,
+            senderName: $this->getSenderName()
+        );
 
-            if ($labelId && $sent->getThreadId()) {
-                $this->applyLabelToThread($sent->getThreadId(), $labelId);
-            }
+        // ── Step 2: Save as draft first ────────────────────────────
+        $messageObj = new Message();
+        $messageObj->setRaw($raw);
 
-            $this->account->incrementSent();
+        $draft = new \Google\Service\Gmail\Draft();
+        $draft->setMessage($messageObj);
 
-            return [
-                'success'    => true,
-                'message_id' => $sent->getId(),
-                'thread_id'  => $sent->getThreadId(),
-            ];
+        $createdDraft = $this->gmail->users_drafts->create('me', $draft);
+        $draftId      = $createdDraft->getId();
 
-        } catch (\Exception $e) {
-            Log::error('Gmail send failed', [
-                'account' => $this->account->email,
-                'to'      => $to,
-                'error'   => $e->getMessage(),
-            ]);
+        Log::info('Draft created — sleeping before send', [
+            'account'  => $this->account->email,
+            'to'       => $to,
+            'draft_id' => $draftId,
+        ]);
 
+        // ── Step 3: Human-like delay (3–8 seconds) ─────────────────
+        // Randomised so bulk sends don't all fire at the same interval
+        sleep(rand(3, 8));
+
+        // ── Step 4: Send the draft ─────────────────────────────────
+        $sent = $this->sendDraft($draftId);
+
+        if (!$sent['success']) {
+            return $sent; // bubble up the error
+        }
+
+        // ── Step 5: Apply label if provided ───────────────────────
+        if ($labelId && $sent['thread_id']) {
+            $this->applyLabelToThread($sent['thread_id'], $labelId);
+        }
+
+        $this->account->incrementSent();
+
+        return [
+            'success'    => true,
+            'message_id' => $sent['message_id'],
+            'thread_id'  => $sent['thread_id'],
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('Gmail send failed', [
+            'account' => $this->account->email,
+            'to'      => $to,
+            'error'   => $e->getMessage(),
+        ]);
+
+        return [
+            'success' => false,
+            'error'   => $e->getMessage(),
+        ];
+    }
+}
+
+// ============================================================
+// SEND AN EXISTING DRAFT BY DRAFT ID
+// Gmail promotes the draft → sent mail, preserving thread/message IDs
+// ============================================================
+protected function sendDraft(string $draftId): array
+{
+    try {
+        // The API requires a Draft object with only the ID set
+        $draft = new \Google\Service\Gmail\Draft();
+        $draft->setId($draftId);
+
+        $sent = $this->gmail->users_drafts->send('me', $draft);
+
+        Log::info('Draft sent successfully', [
+            'draft_id'   => $draftId,
+            'message_id' => $sent->getId(),
+            'thread_id'  => $sent->getThreadId(),
+        ]);
+
+        return [
+            'success'    => true,
+            'message_id' => $sent->getId(),
+            'thread_id'  => $sent->getThreadId(),
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('Draft send failed', [
+            'draft_id' => $draftId,
+            'error'    => $e->getMessage(),
+        ]);
+
+        return [
+            'success' => false,
+            'error'   => $e->getMessage(),
+        ];
+    }
+}
+
+
+  public function sendFollowUp(
+    string $to,
+    string $originalSubject,
+    string $body,
+    string $threadId,
+    string $originalMessageId,
+    ?string $labelId = null,
+    bool $html = false
+): array {
+    try {
+        $this->refreshIfExpired();
+
+        // ── Step 1: Resolve real Message-ID for threading ──────────
+        $realMessageId = $this->getMessageIdFromMessage($originalMessageId)
+                      ?? $this->getMessageIdFromThread($threadId);
+
+        if (!$realMessageId) {
             return [
                 'success' => false,
-                'error'   => $e->getMessage(),
+                'error'   => 'Could not resolve any valid Message-ID',
             ];
         }
-    }
 
-    // ============================================================
-    // SEND FOLLOW-UP  (mirrors Elixir send_follow_up + do_send_email)
-    // ============================================================
-    public function sendFollowUp(
-        string $to,
-        string $originalSubject,
-        string $body,
-        string $threadId,
-        string $originalMessageId,
-        ?string $labelId = null,
-        bool $html = false
-    ): array {
-        try {
-            $this->refreshIfExpired();
+        // ── Step 2: Build raw message ──────────────────────────────
+        $raw = $this->buildRawMessage(
+            from:       $this->account->email,
+            to:         $to,
+            subject:    $originalSubject,
+            body:       $body,
+            senderName: $this->getSenderName(),
+            inReplyTo:  $realMessageId,
+            references: $realMessageId,
+            html:       $html,
+        );
 
-            // Step 1: try real Message-ID from the original message
-            // mirrors Elixir: get_message_headers → extract_message_id
-            $realMessageId = $this->getMessageIdFromMessage($originalMessageId);
-      $cleanSubject = self::cleanContent($originalSubject);
-        $cleanBody    = self::cleanContent($body);
-            if (!$realMessageId) {
-                $realMessageId = $this->getMessageIdFromThread($threadId);
-            }
+        // ── Step 3: Create draft — must set threadId so it stays
+        //            in the same conversation thread ─────────────────
+        $messageObj = new Message();
+        $messageObj->setRaw($raw);
+        $messageObj->setThreadId($threadId); // ← critical for follow-ups
 
-            if (!$realMessageId) {
-                return [
-                    'success' => false,
-                    'error'   => 'Could not resolve any valid Message-ID',
-                ];
-            }
+        $draft = new \Google\Service\Gmail\Draft();
+        $draft->setMessage($messageObj);
 
-            $raw = $this->buildRawMessage(
-                from:       $this->account->email,
-                to:         $to,
-                subject:    $originalSubject,
-                body:       $body,
-                senderName: $this->getSenderName(),
-                inReplyTo:  $realMessageId,
-                references: $realMessageId,
-                html:       $html,
-            );
+        $createdDraft = $this->gmail->users_drafts->create('me', $draft);
+        $draftId      = $createdDraft->getId();
 
-            $message = new Message();
-            $message->setRaw($raw);
-            $message->setThreadId($threadId);
+        Log::info('Follow-up draft created — sleeping before send', [
+            'account'   => $this->account->email,
+            'to'        => $to,
+            'thread_id' => $threadId,
+            'draft_id'  => $draftId,
+        ]);
 
-            $sent = $this->gmail->users_messages->send('me', $message);
+        // ── Step 4: Human-like delay ───────────────────────────────
+        sleep(rand(3, 8));
 
-            if ($labelId && $sent->getThreadId()) {
-                $this->applyLabelToThread($sent->getThreadId(), $labelId);
-            }
+        // ── Step 5: Send the draft ─────────────────────────────────
+        $sent = $this->sendDraft($draftId);
 
-            $this->account->incrementSent();
-
-            return [
-                'success'    => true,
-                'message_id' => $sent->getId(),
-                'thread_id'  => $sent->getThreadId(),
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Gmail follow-up failed', [
-                'account'   => $this->account->email,
-                'to'        => $to,
-                'thread_id' => $threadId,
-                'error'     => $e->getMessage(),
-            ]);
-
-            return [
-                'success' => false,
-                'error'   => $e->getMessage(),
-            ];
+        if (!$sent['success']) {
+            return $sent;
         }
+
+        // ── Step 6: Apply label ────────────────────────────────────
+        if ($labelId && $sent['thread_id']) {
+            $this->applyLabelToThread($sent['thread_id'], $labelId);
+        }
+
+        $this->account->incrementSent();
+
+        return [
+            'success'    => true,
+            'message_id' => $sent['message_id'],
+            'thread_id'  => $sent['thread_id'],
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('Gmail follow-up failed', [
+            'account'   => $this->account->email,
+            'to'        => $to,
+            'thread_id' => $threadId,
+            'error'     => $e->getMessage(),
+        ]);
+
+        return [
+            'success' => false,
+            'error'   => $e->getMessage(),
+        ];
     }
+}
 
     // ============================================================
     // CHECK IF THREAD HAS REPLY FROM RECIPIENT
