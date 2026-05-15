@@ -60,6 +60,10 @@ class GmailService
     // ============================================================
     // ============================================================
 
+// ============================================================
+// SEND INITIAL EMAIL — now via Apps Script for inbox delivery
+// sendFollowUp() still uses Gmail API (thread context protects it)
+// ============================================================
 public function sendEmail(
     string $to,
     string $subject,
@@ -68,59 +72,41 @@ public function sendEmail(
     bool $html = false
 ): array {
     try {
-        $this->refreshIfExpired();
+        // ── Route through Apps Script ──────────────────────────────
+        $appScript = new \App\Services\AppScriptMailer();
 
-        // ── Step 1: Build raw message ──────────────────────────────
-        $raw = $this->buildRawMessage(
-            from:       $this->account->email,
+        $result = $appScript->send(
             to:         $to,
             subject:    $subject,
             body:       $body,
-            senderName: $this->getSenderName()
+            senderName: $this->getSenderName(),  // reuses your existing method
         );
 
-        // ── Step 2: Save as draft first ────────────────────────────
-        $messageObj = new Message();
-        $messageObj->setRaw($raw);
-
-        $draft = new \Google\Service\Gmail\Draft();
-        $draft->setMessage($messageObj);
-
-        $createdDraft = $this->gmail->users_drafts->create('me', $draft);
-        $draftId      = $createdDraft->getId();
-
-        Log::info('Draft created — sleeping before send', [
-            'account'  => $this->account->email,
-            'to'       => $to,
-            'draft_id' => $draftId,
-        ]);
-
-        // ── Step 3: Human-like delay (3–8 seconds) ─────────────────
-        // Randomised so bulk sends don't all fire at the same interval
-        sleep(rand(3, 8));
-
-        // ── Step 4: Send the draft ─────────────────────────────────
-        $sent = $this->sendDraft($draftId);
-
-        if (!$sent['success']) {
-            return $sent; // bubble up the error
+        if (!$result['success']) {
+            Log::error('AppScript send failed', [
+                'account' => $this->account->email,
+                'to'      => $to,
+                'error'   => $result['error'] ?? 'unknown',
+            ]);
+            return $result;
         }
 
-        // ── Step 5: Apply label if provided ───────────────────────
-        if ($labelId && $sent['thread_id']) {
-            $this->applyLabelToThread($sent['thread_id'], $labelId);
+        // ── Apply label if provided (Gmail API still works for this) ──
+        if ($labelId && $result['thread_id']) {
+            $this->applyLabelToThread($result['thread_id'], $labelId);
         }
 
+        // ── Track sent count ───────────────────────────────────────
         $this->account->incrementSent();
 
         return [
             'success'    => true,
-            'message_id' => $sent['message_id'],
-            'thread_id'  => $sent['thread_id'],
+            'message_id' => $result['message_id'],
+            'thread_id'  => $result['thread_id'],
         ];
 
     } catch (\Exception $e) {
-        Log::error('Gmail send failed', [
+        Log::error('sendEmail failed', [
             'account' => $this->account->email,
             'to'      => $to,
             'error'   => $e->getMessage(),

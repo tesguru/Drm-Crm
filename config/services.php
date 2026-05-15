@@ -47,4 +47,10 @@ return [
     'redirect'      => env('GOOGLE_ACCOUNT_REDIRECT_URI'),
 ],
 
+
+    'appscript' => [
+    'url'    => env('APPSCRIPT_URL'),
+    'secret' => env('APPSCRIPT_SECRET'),
+    ],
+
 ];
